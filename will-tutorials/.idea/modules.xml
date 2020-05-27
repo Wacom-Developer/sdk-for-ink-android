@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/drawing-with-touch/drawing-with-touch.iml" filepath="$PROJECT_DIR$/drawing-with-touch/drawing-with-touch.iml" />
+      <module fileurl="file://$PROJECT_DIR$/erasing-strokes/erasing-strokes.iml" filepath="$PROJECT_DIR$/erasing-strokes/erasing-strokes.iml" />
+      <module fileurl="file://$PROJECT_DIR$/selecting-strokes/selecting-strokes.iml" filepath="$PROJECT_DIR$/selecting-strokes/selecting-strokes.iml" />
+      <module fileurl="file://$PROJECT_DIR$/stroke-encoding-and-decoding/stroke-encoding-and-decoding.iml" filepath="$PROJECT_DIR$/stroke-encoding-and-decoding/stroke-encoding-and-decoding.iml" />
+      <module fileurl="file://$PROJECT_DIR$/using-penid/using-penid.iml" filepath="$PROJECT_DIR$/using-penid/using-penid.iml" />
+      <module fileurl="file://$PROJECT_DIR$/will-sdk/will-sdk.iml" filepath="$PROJECT_DIR$/will-sdk/will-sdk.iml" />
+      <module fileurl="file://$PROJECT_DIR$/will-tutorials.iml" filepath="$PROJECT_DIR$/will-tutorials.iml" />
+      <module fileurl="file://$PROJECT_DIR$/working-with-rasters/working-with-rasters.iml" filepath="$PROJECT_DIR$/working-with-rasters/working-with-rasters.iml" />
+    </modules>
+  </component>
+</project>

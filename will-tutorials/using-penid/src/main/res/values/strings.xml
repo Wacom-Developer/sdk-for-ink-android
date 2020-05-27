@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Using Pen Ids</string>
+    <string name="title_activity_main">Using Pen Ids</string>
+    <string name="part1">Part 1 - Optaining Pen Identifiers</string>
+    <string-array name="activity_titles">
+        <item>@string/part1</item>
+    </string-array>
+</resources>

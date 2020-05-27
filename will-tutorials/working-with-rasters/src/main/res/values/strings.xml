@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+      <string name="app_name">Working With Rasters</string>
+      <string name="title_activity_main">Working With Rasters Sample</string>
+
+      <string name="part1">Part 1 - Displaying raster images</string>
+      <string name="part2">Part 2 - Image masking</string>
+
+      <string-array name="activity_titles">
+            <item>@string/part1</item>
+            <item>@string/part2</item>
+      </string-array>
+
+      <string name="action_settings">Settings</string>
+</resources>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+      <string name="app_name">Stroke Encoding Decoding</string>
+      <string name="title_activity_main">Stroke Encoding Decoding Sample</string>
+
+      <string name="part1">Part 1 - Stroke model</string>
+      <string name="part2">Part 2 - Stroke serialization</string>
+      <string name="part3">Part 3 - Working with the WILL File Format</string>
+
+      <string-array name="activity_titles">
+            <item>@string/part1</item>
+            <item>@string/part2</item>
+            <item>@string/part3</item>
+      </string-array>
+
+      <string name="action_settings">Settings</string>
+</resources>

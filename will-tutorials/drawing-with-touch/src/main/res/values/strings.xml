@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">Drawing With Touch</string>
+    <string name="title_activity_main">Drawing With Touch Sample</string>
+
+    <string name="part1">Part 1 - Ink engine setup</string>
+    <string name="part2">Part 2 - Building paths from touch input</string>
+    <string name="part3">Part 3 - Smoothing</string>
+    <string name="part4">Part 4 - Preliminary path</string>
+    <string name="part5">Part 5 - Particle brush</string>
+    <string name="part6">Part 6 - Drawing semi-transparent strokes</string>
+    <string name="part7">Part 7 - Calculating stroke boundary</string>
+
+    <string-array name="activity_titles">
+        <item>@string/part1</item>
+        <item>@string/part2</item>
+        <item>@string/part3</item>
+        <item>@string/part4</item>
+        <item>@string/part5</item>
+        <item>@string/part6</item>
+        <item>@string/part7</item>
+    </string-array>
+
+    <string name="action_settings">Settings</string>
+</resources>
