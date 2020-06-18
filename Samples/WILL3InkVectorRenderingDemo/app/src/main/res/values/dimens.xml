@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <item name="btn_width" format="dimension" type="dimen">38dp</item>
+    <item name="btn_height" format="dimension" type="dimen">38dp</item>
+    <item name="navbar_container_height" format="dimension" type="dimen">40dp</item>
+    <item name="btn_separator" format="dimension" type="dimen">10dp</item>
+
+</resources>

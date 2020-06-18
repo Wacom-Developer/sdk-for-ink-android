@@ -1,0 +1,2 @@
+rootProject.name='WILL3-Ink-Vector-Rendering-Demo'
+include ':app'

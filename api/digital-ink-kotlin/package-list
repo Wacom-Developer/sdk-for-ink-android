@@ -1,0 +1,25 @@
+$dokka.format:gfm
+$dokka.linkExtension:md
+$dokka.location:com.wacom.ink$merge(kotlin.collections.Collection((com.wacom.ink.FloatArrayList)), com.wacom.ink.utils.Bounds)com.wacom.ink/kotlin.collections.-collection/merge.md
+$dokka.location:com.wacom.ink$simplified(kotlin.collections.Collection((com.wacom.ink.FloatArrayList)), kotlin.Float)com.wacom.ink/kotlin.collections.-collection/simplified.md
+com.wacom.ink
+com.wacom.ink.format
+com.wacom.ink.format.enums
+com.wacom.ink.format.input
+com.wacom.ink.format.rendering
+com.wacom.ink.format.semantics
+com.wacom.ink.format.serialization
+com.wacom.ink.format.tree
+com.wacom.ink.format.tree.data
+com.wacom.ink.format.tree.groups
+com.wacom.ink.format.tree.iterators
+com.wacom.ink.format.tree.nodes
+com.wacom.ink.format.util
+com.wacom.ink.manipulation
+com.wacom.ink.manipulation.callbacks
+com.wacom.ink.math
+com.wacom.ink.model
+com.wacom.ink.pipeline
+com.wacom.ink.pipeline.base
+com.wacom.ink.rendering
+com.wacom.ink.utils

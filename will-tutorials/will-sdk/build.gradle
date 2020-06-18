@@ -1,2 +1,0 @@
-configurations.create("default")
-artifacts.add("default", file('will-sdk-1.8.4.aar'))

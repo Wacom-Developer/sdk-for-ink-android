@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name_demo">WILL3-Ink-Vector-Rendering-Demo</string>
+    <string name="filebrowser_provider">WILL3-Ink-Vector-Rendering-Demo</string>
+    <string name="sdk_name">WILL SDK for ink (Android)</string>
+    <string name="sdk_version">v3.0.0</string>
+    <string name="vector_eraser">Vector eraser</string>
+</resources>

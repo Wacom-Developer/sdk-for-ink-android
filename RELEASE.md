@@ -1,13 +1,12 @@
 # SDK for ink - Android
 
-## Version 1.8.4a
+## Version 3.0.0
 
 ## History
 
-### 1.8.4a  03 November 2018
-    * Repackaged zip file
+### 3.0.0  16 June 2020
+    * Initial v3 release
 
 ### 1.8.4   31 May 2017
     * Initial public release
-
     

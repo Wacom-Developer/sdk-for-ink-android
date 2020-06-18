@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@color/navbar_bg_color">
+
+    <ImageView
+        android:id="@+id/btnBackground1"
+        android:layout_width="@dimen/btn_width"
+        android:layout_height="@dimen/btn_height"
+        android:onClick="selectPaper"
+        android:src="@drawable/btn_paper_01"
+        android:padding="5dp"/>
+
+    <ImageView
+        android:id="@+id/btnBackground2"
+        android:layout_width="@dimen/btn_width"
+        android:layout_height="@dimen/btn_height"
+        android:onClick="selectPaper"
+        android:src="@drawable/btn_paper_02"
+        android:padding="5dp"/>
+
+    <ImageView
+        android:id="@+id/btnBackground3"
+        android:layout_width="@dimen/btn_width"
+        android:layout_height="@dimen/btn_height"
+        android:onClick="selectPaper"
+        android:src="@drawable/btn_paper_03"
+        android:padding="5dp"/>
+
+</LinearLayout>

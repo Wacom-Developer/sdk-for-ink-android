@@ -1,109 +1,117 @@
 # WILL SDK for ink - Android
 
-WILL (Wacom Ink Layer Language) is a cross-platform universal ink solution.
-The WILL SDK for ink is a Software Development Kit (SDK) that allows you to include premium digital inking features in your applications.
-Its modularized architecture allows each module to be configured, replaced, or omitted as required by the specific application, providing you with superior flexibility.
-You can also use the WILL open file format (.will) to exchange ink content between applications.
+**Wacom Ink Layer Language (WILL™)** is a cross-platform digital ink technology.
+It is based on the needs of the end-user and Wacom's experience with different domains.
+WILL allows you to include premium digital inking features in your applications.
+It uses a modularized pipeline allowing each module to be configured, replaced, or omitted as required by the specific application, providing you with superior flexibility.
 
-The WILL SDK for ink includes:
+The newly introduced **Universal Ink Model** is a data model describing ink related data structures and meta-data concept to describe the semantic content of ink.
+You can also use the file encoding of the Universal Ink Model to exchange ink content between applications and cross-platform.
 
-* A software library
+The WILL 3 Framework includes:
+
+* Software libraries for multiple platforms (Windows, Android, iOS, Web)
 * Code samples illustrating particular functionality
-* The Tool Configurator - a fully functional demo application
-* Comprehensive documentation, including step-by-step tutorials
-* Articles describing advanced programming techniques and best practices
+* A web-based **Ink Designer** to configure and test the pipeline
+* Comprehensive documentation, including step-by-step guides
 
-## Digital ink
+## Design Concepts
+The following is an introduction to the Design Concepts for our WILL technology.
 
-Digital ink (referred to in this documentation as ink) content comprises of strokes.
-These are usually, but not necessarily, created with a pointing device.
-Strokes have certain graphical characteristics and can be optionally associated with other data or metadata.
-You can digitally store and share ink content using various models - vector-based, pixel-based, or hybrid.
-
-## Ink content exchange
-
-The WILL file format is similar to SVG, but is specifically designed to accommodate digital ink content.
-It is used for exchanging ink content between devices and applications, and is implemented as an open and extensible binary format.
-
-Note that the main modules of the WILL software library do not rely on a specific file format.
-You can use alternatives to the WILL file format (for example, InkML, SVG, or PNG) to exchange handwritten content, according to specific application requirements.
-
-## Software library
-
-WILL supports a variety of input technologies and generates the best possible ink through the use of two dedicated modules, **Path** and **Smoothing**, that take into account the specific characteristics of each input type.
-The Rasterizer module then provides advanced real-time stroke rendering.
-The **Manipulation** module supports editing functions that leverage the WILL stroke mathematical model (referred to as the stroke model in this documentation).
-The **Serialization** module encodes and decodes stroke data.
-
-![WILL-Ink-Architecture](media/WILLSoftwareLibraryAbstractArchitecture.png)
+## Interoperability
+WILL 3.0 technology and its **Universal Ink Model** is platform and device agnostic, thus the specification does not focus on specific hardware platforms.
+Ink Markup Language **[InkML]** and Ink Serialized Format **[ISF]** are the most well-known formats for storing digital ink besides Wacom Ink Layer Language **[WILL]**.
+The previous version of WILL did not support the storage of sensor data samples for digital ink (e.g., timestamps, (x,y)-coordinates, or pressure values).
+WILL 3.0 gives the ability to store ink sensor samples along with the visual representation of digital ink as well as semantic metadata.
+As a result it is now possible to make a loss-less conversion of the Universal Ink Data format to other existing formats.
 
 
-In more detail:
+### Natural
+Digital ink has to look natural and similar to real ink.
+To ensure that the visual appearance of the digital ink can be shared across platforms, WILL 3.0 contains all relevant data to present ink in a consistent way across all platforms.
+By using WILL particle ink rasterization, natural brushes can be configured to create artwork, as illustrated in *Figure 1*.
 
-* The **Path** module converts raw input into the stroke model.
-  The stroke model is a mathematical model optimized for stroke representation.
-  It improves on traditional models for 2D graphics: the stroke is represented using Catmull-Rom interpolation over a sequence of control points, but in addition to x and y co-ordinates, each control point can have width and opacity values.
+![Artwork created with raster / particle ink.](media/overview_artwork.png)
 
-* The **Smoothing** module enhances and enriches the stroke representation.
+*Figure 1: Artwork created with raster / particle ink.*
 
-* The **Rasterizer** module provides APIs that are compatible with the stroke model.
-  It uses three rendering back-ends that are built on OpenGL ES 2.0, DirectX 11.1, and WebGL respectively, providing full hardware acceleration on most platforms.
-  The APIs facilitate raster-based techniques such as caching and masking.
-  These techniques can be used to implement features such as preliminary curves, pixel transformations, and pixel-based manipulations on free-form selections.
+### Active
+Mobile apps, Cloud application, or Cloud services have become a part of modern IT infrastructures.
+Thus, modern data formats need to address issues including:
 
-* The **Manipulation** module provides a set of algorithms that operate over the stroke model.
-  These algorithms can be used as building blocks to implement functions such as selecting, erasing, cutting, copying, and pasting.
+* Unique identifiable IDs for devices
+* Streaming capability for partial updates of ink data
+* Document size reduction
+* Support for commonly used Web Standards such as JSON
 
-* The **Serialization** module provides a binary encoding algorithm designed to support the stroke model.
-  This algorithm is based on Google protocol buffers, which makes the resulting binary code open and platform-independent.
+![Active.](media/overview_active.png)
 
-The WILL software library also provides a range of utility algorithms, including:
+*Figure 2: Active Ink.*
 
-* An algorithm that calculates the boundaries of strokes described by the stroke model, and represents them as a collection of cubic Bezier curves.
-  This algorithm can represent strokes using traditional 2D vector graphics models.
-  The resulting representation can be serialized in traditional vector formats like PDF and SVG, or rendered using traditional 2D graphics libraries like Quartz 2D or Direct2D, or as HTML 5 canvas elements, or Android Canvas instances.
+### Meta Data and Semantics
+There are three types of metadata:
 
-* An algorithm that produces a unique identifier based on the input device.
-  You can use this functionality, which works exclusively with Wacom devices, to distinguish different users by their pens.
+- Descriptive
+- Structural
+- Administrative
 
+*Descriptive metadata* are typically used for discovery and identification, as information used to search and locate an object such as title, author, subject, keyword, and publisher.
+WILL offers metadata for the description of Document and Author in the ink document.
 
-## Platform support
+*Structural metadata* give a description of how the components of an object are organised.
+The metadata for ink can be used to describe the structure of ink documents.
 
-The WILL ink SDK provides platform-specific packages for iOS, Android, Windows Store, and Web.
-These packages provide a deep integration with the hosting platform by using native packaging and programming techniques, and by providing platform-specific language bindings for all modules in the software library.
+Finally, *administrative metadata* give information to help manage the source.
+They refer to the technical information including file type or when and how the file was created.
+Two sub-types of administrative metadata are *rights management metadata* and *preservation metadata*.
+Rights management metadata explain intellectual property rights, while preservation metadata contain information that is needed to preserve and save a resource.
 
-Software applications often combine ink with other content, such as typed text and images.
-The platform-specific packages provide the flexibility and extensibility required to tightly integrate WILL with any application.
+*Semantic metadata* is slowly becoming the differentiator in the vocabulary of many vendors.
+Semantics is the study of meaning.
+As it applies to technology and unstructured content, it represents the ability to extract meaning from words, phrases, sentences, and larger units of text that provide the context within content, and is manually applied or automatically generated as semantic metadata to describe the object.
+Semantic metadata is typically leveraged to improve search, but any application that uses metadata can achieve significant benefits through the generation or application of semantic metadata.
+Thus, WILL metadata is based on established metadata for document and author descriptions and defines its own semantic metadata for ink.
 
-Platform-specific tutorials illustrate the use of the software library modules.
-Source code is provided in each case, and files use a naming convention that reflects the numerical ordering of topics in the Tutorials section of the documentation for each platform.
+### Sensor Data and Biometrics
+Another important objective in the design of the Universal Ink Model is to support the capture of sensor data from ink devices.
+For example, sensor data is used in the context of handwriting analysis, as well as signature capture and verification.
 
-### iOS
+Some ink devices provide additional information *(see Figure 3)* that in most use cases is considered less important and may not be supported by all makes or types of devices.
+This includes:
 
-![WILL-Ink-iOS-SDK-Structure](media/iOSSDKStructure.png)
+* **Pressure** - the force applied to the nib of the pen
+* **Inclination** - the angle between the pen barrel and vertical
+* **Orientation** - the plain-direction of the pen from the nib
+* **Rotation** - the rotation of the barrel during signing
 
-The iOS software library is packaged as a framework, and Objective-C language binding allows iOS developers to use the preferred language of the platform.
+![Overview ink sensor channels.](media/overview_ink_device_sensor_channels.png)
 
-### Android
+*Figure 3: Overview ink sensor channels.*
 
-![WILL-Ink-Android-SDK-Structure](media/AndroidSDKStructure.png)
+The forensic character of the data is of paramount importance, and means that the data-collection philosophy differs in many respects from competing signature technologies.
+A key principle is that during the collection of the signature, the software stores the data exactly as it is supplied by the device.
+Each type of data (e.g. position, time, pressure, etc.) is collected with metric information which describes the units being used by the device, and this is stored with the raw point data to allow the conversion to true units when required.
+The advantage of this is that the accuracy of the information is determined by the device and cannot be compromised by the conversion process.
+In addition to the pen-data, contextual data is collected and stored with the signature.
+This includes:
 
-The Android software library is packaged as a native library (shared object) wrapped in an Android library (JAR).
-Java language binding allows Android developers to use the preferred language of the platform and easily integrate ink content inside the View hierarchy.
+* The name of the signatory
+* The date and time at which the signature was given
+* The reason for signing
+* The make and type of digitizer being used
+* The type and version of the digitizer driver being used
+* The type and version of the operating system of the client PC being used
+* The Network Interface Card address of the PC
 
-### Windows
+The objective is to store sensor data and the characteristics of the ink device alongside the visual representation of the digital ink.
 
-![WILL-Ink-Windows-SDK-Structure](media/WindowsSDKStructure.png)
+## Technology
+The WILL technology is designed to be a platform-independent inking engine, providing the most relevant capabilities:
 
-The Windows Store software library is packaged as an unmanaged Windows Runtime Component.
-It can be used from any language supported by Windows Runtime (WinRT), whether inside a managed or an unmanaged environment.
+- **Ink Geometry Pipeline and Rendering** - Converts sensor data from an input device into a geometry which is rendered by a platform-specific rendering engine
+- **Ink Serialization** - Exchanges the rendering results, the collected sensor data, and relevant metadata; the Universal Ink Format is used to serialize and de-serialize the information
+- **Ink Manipulation** - Manipulates the generated geometry; the ink manipulation operations will be able to scale, move, rotate, and erase ink strokes (including exact split)
 
-### Web
-
-![WILL-Ink-Web-SDK-Structure](media/WebSDKStructure.png)
-
-The Web software library is packaged as a JavaScript module with an asm.js program.
-It can be used by any standard HTML 5 application as a regular JavaScript library.
 
 ---
 
@@ -113,7 +121,7 @@ It can be used by any standard HTML 5 application as a regular JavaScript librar
 For further samples check Wacom's Developer additional samples, see [https://github.com/Wacom-Developer](https://github.com/Wacom-Developer)
 
 ## Documentation
-For further details on using the SDK see [Wacom SDK for ink documentation v2](http://will-docs.westeurope.cloudapp.azure.com/sdk-for-ink/docs/2.0.0/overview) 
+For further details on using the SDK see [WILL SDK for ink documentation](http://will-docs.westeurope.cloudapp.azure.com/sdk-for-ink/) 
 
 The API Reference is available directly in the downloaded SDK.
 
