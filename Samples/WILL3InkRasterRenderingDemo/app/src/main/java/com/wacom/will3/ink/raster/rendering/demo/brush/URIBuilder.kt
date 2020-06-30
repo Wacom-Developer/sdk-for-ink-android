@@ -10,17 +10,17 @@ package com.wacom.will3.ink.raster.rendering.demo.brush
 class URIBuilder {
 
     companion object {
-        private const val SAMPLE = "will3-sdk-for-ink-android-demo"
+        private const val SAMPLE = "will3-raster-ink-android-demo"
 
         // Type - raster | vector
         @JvmStatic
         fun getBrushURI(type: String, name: String): String {
-            return "will://$SAMPLE/${type}-brush/${name}".format(SAMPLE, type, name)
+            return "app://$SAMPLE/${type}-brush/${name}".format(SAMPLE, type, name)
         }
 
         @JvmStatic
         fun getToolURI(type: String, name: String): String {
-            return "will://$SAMPLE/${type}-tool/${name}".format(SAMPLE, type, name)
+            return "app://$SAMPLE/${type}-tool/${name}".format(SAMPLE, type, name)
         }
     }
 }

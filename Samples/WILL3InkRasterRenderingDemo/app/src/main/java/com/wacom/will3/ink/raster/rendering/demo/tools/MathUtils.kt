@@ -28,8 +28,6 @@ class MathUtils {
         }
 
         fun mapTo(value: Float, src: Range, dest: Range): Float {
-            //return dest.min + ((src.clamp(value) - src.min) / (src.max - src.min)) *
-            //        (dest.max - dest.min);
             return (value - src.min) / (src.max - src.min) * (dest.max - dest.min) + dest.min;
         }
 
@@ -41,6 +39,5 @@ class MathUtils {
                 return mapTo(value, src, dest)
             }
         }
-
     }
 }

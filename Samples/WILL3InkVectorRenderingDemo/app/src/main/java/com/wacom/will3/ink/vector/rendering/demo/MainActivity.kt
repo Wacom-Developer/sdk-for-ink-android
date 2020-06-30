@@ -469,16 +469,4 @@ class MainActivity : AppCompatActivity() {
             show()
         }
     }
-
-    fun createTool(uri: String, context: Context): Tool {
-        when (uri) {
-            BrushTool.uri -> return BrushTool()
-            EraserVectorTool.uri -> return EraserVectorTool()
-            FeltTool.uri -> return FeltTool()
-            MarkerTool.uri -> return MarkerTool()
-            PenTool.uri -> return PenTool()
-            else -> return PenTool() //default tool
-        }
-    }
-
 }

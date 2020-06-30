@@ -7,7 +7,6 @@ package com.wacom.will3.ink.raster.rendering.demo.raster
 import com.wacom.ink.*
 import com.wacom.ink.pipeline.*
 import com.wacom.ink.pipeline.base.ProcessorResult
-import com.wacom.will3.ink.raster.rendering.demo.tools.Tool
 import com.wacom.will3.ink.raster.rendering.demo.tools.raster.RasterTool
 
 /**

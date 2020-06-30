@@ -181,7 +181,6 @@ class MainActivity : AppCompatActivity(), RasterView.InkingSurfaceListener {
     fun selectTool(uri: String) {
         val view = when (uri) {
             WaterbrushTool.uri -> btn_water_brush
-            InkBrushTool.uri -> btn_ink_brush
             CrayonTool.uri -> btn_crayon
             else -> btn_pencil
         }
@@ -192,7 +191,6 @@ class MainActivity : AppCompatActivity(), RasterView.InkingSurfaceListener {
         when (view.id) {
             R.id.btn_pencil -> setTool(view, PencilTool(this))
             R.id.btn_water_brush -> setTool(view, WaterbrushTool(this))
-            R.id.btn_ink_brush -> setTool(view, InkBrushTool(this))
             R.id.btn_crayon -> setTool(view, CrayonTool(this))
             R.id.btn_eraser -> setTool(view, EraserRasterTool(this))
         }

@@ -60,7 +60,16 @@ class VectorView @JvmOverloads constructor(
 
     private var currentPath =
         Path() // This will contain the current drawing path before it is finished
-    var paint: Paint = Paint()
+
+    /**
+     * In order to make the strokes look nice and smooth, it is recommended to enable:
+     *  - Antialiasing
+     *  - Dither
+     */
+    val paint = Paint().also {
+        it.isAntiAlias = true
+        it.isDither = true
+    }
 
     // Ink Manipulations
     private var strokes = mutableMapOf<String, WillStroke>() // A list of existing strokes

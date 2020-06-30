@@ -11,8 +11,9 @@ import com.wacom.will3.ink.vector.rendering.demo.brush.BrushPalette
 import com.wacom.will3.ink.vector.rendering.demo.brush.URIBuilder
 import com.wacom.will3.ink.vector.rendering.demo.computeValueBasedOnPressure
 import com.wacom.will3.ink.vector.rendering.demo.tools.MathUtils
-import com.wacom.will3.ink.vector.rendering.demo.tools.Range
+import java.lang.Math.abs
 import kotlin.math.cos
+import kotlin.math.pow
 
 class FeltTool : VectorTool() {
 
@@ -29,11 +30,15 @@ class FeltTool : VectorTool() {
              * The currently layout will use:
              * - Coordinate values (X and Y)
              * - Size - the size of the brush at any point of the stroke
+             * - For tilt effect the rotation, scale y and offset y
              */
             return PathPointLayout(
                 PathPoint.Property.X,
                 PathPoint.Property.Y,
-                PathPoint.Property.SIZE
+                PathPoint.Property.SIZE,
+                PathPoint.Property.ROTATION,
+                PathPoint.Property.SCALE_X,
+                PathPoint.Property.OFFSET_X
             )
         } else {
             /**
@@ -56,8 +61,8 @@ class FeltTool : VectorTool() {
             next,
             initialValue = 3f,
             finalValue = 3f,
-            minValue = 7f,
-            maxValue = 3f,
+            minValue = 3f,
+            maxValue = 7f,
             minSpeed = 80f,
             maxSpeed = 1400f,
             remap = { v: Float -> MathUtils.power(v, 0.65f) })
@@ -72,28 +77,41 @@ class FeltTool : VectorTool() {
     }
 
     override val stylusCalculator: Calculator = { previous, current, next ->
-        var size = current.computeValueBasedOnSpeed(
-            previous,
-            next,
-            initialValue = 2f,
-            finalValue = 2f,
-            minValue = 6f,
-            maxValue = 2f,
-            minSpeed = 80f,
-            maxSpeed = 1400f,
-            remap = { v: Float -> MathUtils.power(v, 0.65f) })
+        var size = if (current.force == -1f) {
+            current.computeValueBasedOnSpeed(
+                previous,
+                next,
+                minValue = 1f,
+                maxValue = 5f,
+                minSpeed = 0f,
+                maxSpeed = 3500f,
+                remap = { v: Float -> v.toDouble().pow(1.17).toFloat() }
+            )
 
+        } else {
+            current.computeValueBasedOnPressure(
+                minValue = 1f,
+                maxValue = 5f,
+                minPressure = 0.0f,
+                maxPressure = 1.0f,
+                remap = { v: Float -> v.toDouble().pow(1.17).toFloat() }
+            )
+        }
         if (size == null) {
             size = previousSize
         } else {
             previousSize = size
         }
+        val cosAltitudeAngle = abs(cos(current.altitudeAngle!!))
 
-        //we add some values on pressure
-        size += (current.force!! * 3)
-
-
-        PathPoint(current.x, current.y, size = size)
+        val tiltScale = 1.5f * cosAltitudeAngle
+        val scaleX = 1.0f + tiltScale
+        val offsetX = size * tiltScale
+        val rotation = current.computeNearestAzimuthAngle(previous)
+        PathPoint(
+            current.x, current.y,
+            size = size, rotation = rotation,
+            scaleX = scaleX, offsetX = offsetX)
     }
 
 }

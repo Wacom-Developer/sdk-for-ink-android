@@ -94,94 +94,6 @@ class BrushPalette {
             return brush
         }
 
-        fun inkBrush(context: Context): RasterBrush {
-            val opts = BitmapFactory.Options()
-            opts.inSampleSize = 1
-            opts.inScaled = false
-
-            val shapeTexture1 = BitmapFactory.decodeResource(context.resources, R.drawable.fountain_brush_128x128, opts)
-            val shapeTexture2 = BitmapFactory.decodeResource(context.resources, R.drawable.fountain_brush_64x64, opts)
-            val shapeTexture3 = BitmapFactory.decodeResource(context.resources, R.drawable.fountain_brush_32x32, opts)
-            val shapeTexture4 = BitmapFactory.decodeResource(context.resources, R.drawable.fountain_brush_16x16, opts)
-            val shapeTexture5 = BitmapFactory.decodeResource(context.resources, R.drawable.fountain_brush_8x8, opts)
-            val shapeTexture6 = BitmapFactory.decodeResource(context.resources, R.drawable.fountain_brush_4x4, opts)
-            val shapeTexture7 = BitmapFactory.decodeResource(context.resources, R.drawable.fountain_brush_2x2, opts)
-            val shapeTexture8 = BitmapFactory.decodeResource(context.resources, R.drawable.fountain_brush_1x1, opts)
-
-            val fillTexture =
-                BitmapFactory.decodeResource(context.resources, R.drawable.essential_fill_8, opts)
-
-            val stream = ByteArrayOutputStream()
-            shapeTexture1!!.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            val shapeTextureButeArray1 = stream.toByteArray()
-
-            stream.reset()
-            shapeTexture2!!.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            val shapeTextureButeArray2 = stream.toByteArray()
-
-            stream.reset()
-            shapeTexture3!!.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            val shapeTextureButeArray3 = stream.toByteArray()
-
-            stream.reset()
-            shapeTexture4!!.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            val shapeTextureButeArray4 = stream.toByteArray()
-
-            stream.reset()
-            shapeTexture5!!.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            val shapeTextureButeArray5 = stream.toByteArray()
-
-            stream.reset()
-            shapeTexture6!!.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            val shapeTextureButeArray6 = stream.toByteArray()
-
-            stream.reset()
-            shapeTexture7!!.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            val shapeTextureButeArray7 = stream.toByteArray()
-
-            stream.reset()
-            shapeTexture8!!.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            val shapeTextureButeArray8 = stream.toByteArray()
-            stream.close()
-
-            val stream2 = ByteArrayOutputStream()
-            fillTexture!!.compress(Bitmap.CompressFormat.PNG, 100, stream2)
-            val fillTextureByteArray = stream2.toByteArray()
-            stream2.close()
-
-            var brush = RasterBrush(
-                URIBuilder.getBrushURI("raster", "Inkbrush"),
-                0.035f, 0f,
-                RotationMode.NONE,
-                listOf(
-                    shapeTextureButeArray1,
-                    shapeTextureButeArray2,
-                    shapeTextureButeArray3,
-                    shapeTextureButeArray4,
-                    shapeTextureButeArray5,
-                    shapeTextureButeArray6,
-                    shapeTextureButeArray7,
-                    shapeTextureButeArray8
-                ),
-                listOf(), fillTextureByteArray,
-                "",
-                fillTexture.width.toFloat(), fillTexture.height.toFloat(),
-                true, BlendMode.MAX
-            )
-
-            shapeTexture1.recycle()
-            shapeTexture2.recycle()
-            shapeTexture3.recycle()
-            shapeTexture4.recycle()
-            shapeTexture5.recycle()
-            shapeTexture6.recycle()
-            shapeTexture7.recycle()
-            shapeTexture8.recycle()
-            fillTexture.recycle()
-
-            return brush
-        }
-
         fun crayonbrush(context: Context): RasterBrush {
             val opts = BitmapFactory.Options()
             opts.inSampleSize = 1
@@ -202,7 +114,7 @@ class BrushPalette {
 
             var brush = RasterBrush(
                 URIBuilder.getBrushURI("raster", "Crayon"),
-                0.1f, 0.05f,
+                0.15f, 0.15f,
                 RotationMode.RANDOM,
                 listOf(shapeTextureButeArray),
                 listOf(), fillTextureByteArray,

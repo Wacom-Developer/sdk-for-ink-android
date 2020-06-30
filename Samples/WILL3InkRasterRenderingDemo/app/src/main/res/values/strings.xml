@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name_demo">WILL3InkRasterRenderingDemo</string>
+    <string name="app_name_demo">WILL 3 - Raster Ink</string>
     <string name="filebrowser_provider">WILL3-Ink-Raster-Rendering-Demo</string>
     <string name="sdk_name">WILL SDK for ink (Android)</string>
     <string name="sdk_version">v3.0.0</string>

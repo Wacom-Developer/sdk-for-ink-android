@@ -11,6 +11,7 @@ import com.wacom.ink.format.enums.InkInputType
 import com.wacom.ink.format.rendering.Style
 import com.wacom.will3.ink.vector.rendering.demo.tools.vector.*
 import com.wacom.will3.ink.vector.rendering.demo.tools.Tool
+import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
 
@@ -26,6 +27,15 @@ fun MotionEvent.toPointerData(): PointerData {
         MotionEvent.ACTION_UP -> Phase.END
         else -> Phase.END
     }
+    // compute the azimuth angle to achieve cross-platform consistency
+    val orientationAngle = getOrientation(0) + PI / 2
+    val azimuthAngle = if (orientationAngle > PI) {
+        (orientationAngle - 2 * PI).toFloat()
+    } else {
+        orientationAngle.toFloat()
+    }
+    // compute the altitude angle to achieve cross-platform consistency
+    val altitudeAngle = (PI / 2 - this.getAxisValue(MotionEvent.AXIS_TILT, 0)).toFloat()
 
     return PointerData(
         this.x,
@@ -33,8 +43,8 @@ fun MotionEvent.toPointerData(): PointerData {
         phase,
         timestamp = this.eventTime,
         force = this.pressure,
-        altitudeAngle = getAxisValue(MotionEvent.AXIS_TILT),
-        azimuthAngle = orientation
+        altitudeAngle = altitudeAngle,
+        azimuthAngle = azimuthAngle
     )
 }
 
@@ -46,13 +56,19 @@ fun MotionEvent.toPointerData(): PointerData {
  */
 fun MotionEvent.historicalToPointerData(index: Int): PointerData {
     val phase = Phase.UPDATE
-
+    val orientationAngle = getHistoricalOrientation(0, index) + PI/2
+    val azimuthAngle = if (orientationAngle > PI) {
+        (orientationAngle - 2 * PI).toFloat()
+    } else {
+        orientationAngle.toFloat()
+    }
+    val altitudeAngle = (PI / 2 - this.getHistoricalAxisValue(MotionEvent.AXIS_TILT, index)).toFloat()
     return PointerData(
         getHistoricalX(index), getHistoricalY(index),
         phase, timestamp = getHistoricalEventTime(index),
         force = getHistoricalPressure(index),
-        altitudeAngle = getHistoricalAxisValue(MotionEvent.AXIS_TILT, index),
-        azimuthAngle = orientation
+        altitudeAngle = altitudeAngle,
+        azimuthAngle = azimuthAngle
     )
 }
 
@@ -72,8 +88,7 @@ fun Tool.uri(): String {
         is EraserVectorTool -> return EraserVectorTool.uri
         is EraserWholeStrokeTool -> return EraserWholeStrokeTool.uri
     }
-
-    return return PenTool.uri //default value
+     return PenTool.uri //default value
 }
 
 fun Style.createVectorTool(): VectorTool {

@@ -2,7 +2,7 @@
 
 
 ## Description
-The purpose of this sample tutorial is to demonstrate how to use WILL SDK for ink (v3.0) to create raster-based ink strokes in Android applications.
+The purpose of this sample tutorial is to demonstrate how to use WILL SDK for ink (v3.0) to create raster-based ink strokes into Android applications.
 
 ### Key Features
 - Particle brushes with custom brush texture
@@ -23,18 +23,18 @@ Download the SDK from https://developer.wacom.com/developer-dashboard
 
 * Login using your Wacom ID
 * Select **Downloads for ink**
-* Download **WILL SDK for ink for Android (version 3.0)**
+* Download **WILL SDK for Android**
 * Accept the End User License Agreement to use the SDK
 
 The downloaded Zip file contains the SDK with documentation.
 
 ## SDK license
 
-The SDK is free of charge and does not need a license.
+The SDK is does not need a license token.
 
 ## Using the WILL SDK
 
-The WILL SDK for Android is distributed as a java jar library.
+The WILL SDK for Android is distributed as an java jar library.
 
 
 ## Building the Demo
@@ -47,17 +47,17 @@ The WILL SDK for Android is distributed as a java jar library.
 
 ## Using the Demo
 
-Once the demo is running, it will display the followed screen:
+Once the demo is running, it will appear the followed screen:
 
 ![Main screen](./readme_files/empty_screen.png)
 
-Where the different toolbar icons are:
+Where the different toolbar icons are for:
 
 | Function   | Description                   | Icon                                                                                           |
 |:---------------------|:-------------------------------------------------------:|-----------------------------------------------------------:|
-| Background           | Select the desired background                           | ![Load icon](./readme_files/background.png)                |
-| Load                 | Load a previously saved model                           | ![Load icon](./readme_files/btn_load.png)                  |
-| Save                 | Save an ink model                                       | ![Load icon](./readme_files/btn_save.png)                  |
+| Background           | Select the desire background                            | ![Load icon](./readme_files/background.png)                |
+| Load                 | Load a previous saved model                             | ![Load icon](./readme_files/btn_load.png)                  |
+| Save                 | Save a ink model                                        | ![Load icon](./readme_files/btn_save.png)                  |
 | Set color            | Set the color for the stroke                            | ![Load icon](./readme_files/color.png)                     |
 | Clear                | Clear the screen                                        | ![Load icon](./readme_files/btn_clear.png)                 |
 | Pencil tool          | Select the pencil tool                                  | ![Load icon](./readme_files/btn_pencil.png)                |
@@ -65,6 +65,7 @@ Where the different toolbar icons are:
 | Crayon tool          | Select the crayon tool                                  | ![Load icon](./readme_files/btn_crayon.png)                |
 | Eraser tool          | Select the eraser tool                                  | ![Load icon](./readme_files/btn_eraser.png)                |
 
+> NOTE: Within the demo, the tool configuration are optimised for SPen devices. 
 
 ---
 
@@ -78,11 +79,46 @@ Using ProGuard with the SDK will lead to invalid signatures of native methods. I
 -keep class com.wacom.ink.** {*;}
 ```
 
+## Tutorials
+
+The following tutorials demonstrate how to use WILL SDK for Android: 
+
+
+
+
 ## API Reference
 
-API documentation is included in the downloaded SDK:
+In the downloaded SDK open this file in a browser:
 
-`documentation\digital-ink-kotlin\index.html`
-`documentation\will-raster-ink\index.html`
+`documentation\index.html`
+
+The page gives access to the API Reference section:
+
+![WILL-Ink-API](media/API.png)
 
 ----
+
+# Additional resources 
+
+## Sample Code
+For further samples check Wacom's Developer additional samples, see [https://github.com/Wacom-Developer](https://github.com/Wacom-Developer)
+
+## Documentation
+For further details on using the SDK see [https://developer-docs.wacom.com/sdk-for-ink](https://developer-docs.wacom.com/sdk-for-ink) 
+
+The API Reference is available directly in the downloaded SDK.
+
+## Support
+If you experience issues with the technology components, please file a ticket in our Developer Support Portal:
+
+- [Developer Support Portal](https://developer.wacom.com/developer-dashboard/support)
+
+## Developer Community 
+Join our developer community:
+
+- [LinkedIn - Wacom for Developers](https://www.linkedin.com/company/wacom-for-developers/)
+- [Twitter - Wacom for Developers](https://twitter.com/Wacomdevelopers)
+
+## License 
+This sample code is licensed under the [MIT License](
+https://choosealicense.com/licenses/mit/).

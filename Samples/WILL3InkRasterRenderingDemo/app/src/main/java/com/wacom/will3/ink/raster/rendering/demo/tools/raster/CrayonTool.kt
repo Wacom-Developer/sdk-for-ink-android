@@ -10,38 +10,42 @@ import com.wacom.ink.PathPoint
 import com.wacom.ink.PathPointLayout
 import com.wacom.will3.ink.raster.rendering.demo.brush.BrushPalette
 import com.wacom.will3.ink.raster.rendering.demo.brush.URIBuilder
-import com.wacom.will3.ink.raster.rendering.demo.tools.MathUtils
-import com.wacom.will3.ink.raster.rendering.demo.tools.Range
+import com.wacom.will3.ink.raster.rendering.demo.computeValueBasedOnPressure
+import kotlin.math.*
 
 
 class CrayonTool(context: Context) : RasterTool(context) {
 
     companion object {
         val uri = URIBuilder.getToolURI("raster", "crayon")
+        // Minimum size of the pencil tip
+        val MIN_CRAYON_SIZE = 25f
+        // Maximum size of the pencil tip
+        val MAX_CRAYON_SIZE = 50f
+        // Minimum alpha values for the particles
+        val MIN_ALPHA = 0.1f
+        // Maximum alpha values for the particles
+        val MAX_ALPHA = 0.7f
+        //  Unit for speed is px/second.
+        //  NOTE: This needs to be optimized for different Pixel densities of different devices
+        val MAX_SPEED = 15000f
+        // Half PI value
+        val PI_HALF = (PI / 2f).toFloat()
+        // Minimum altitude angle seen in experiments
+        val MIN_ALTITUDE_ANGLE = 0.4
     }
 
     override var brush = BrushPalette.crayonbrush(context)
-    var previousSize = 18f
+    var previousSize = MIN_CRAYON_SIZE
     var previousAlpha = 0.1f
 
     override fun getLayout(): PathPointLayout {
-        if (isStylus) {
-            return PathPointLayout(
-                PathPoint.Property.X,
-                PathPoint.Property.Y,
-                PathPoint.Property.SIZE,
-                PathPoint.Property.ALPHA,
-                PathPoint.Property.OFFSET_X,
-                PathPoint.Property.OFFSET_Y
-            )
-        } else {
-            return PathPointLayout(
+       return PathPointLayout(
                 PathPoint.Property.X,
                 PathPoint.Property.Y,
                 PathPoint.Property.SIZE,
                 PathPoint.Property.ALPHA
             )
-        }
     }
 
     override val touchCalculator: Calculator = { previous, current, next ->
@@ -49,10 +53,12 @@ class CrayonTool(context: Context) : RasterTool(context) {
         var size = current.computeValueBasedOnSpeed(
             previous,
             next,
-            minValue = 18f,
-            maxValue = 28f,
+            minValue = MIN_CRAYON_SIZE,
+            maxValue = MAX_CRAYON_SIZE,
             minSpeed = 10f,
-            maxSpeed = 1400f
+            maxSpeed = MAX_SPEED,
+            // reverse behaviour
+            remap = { 1f - it}
         )
         if (size == null) {
             size = previousSize
@@ -63,37 +69,70 @@ class CrayonTool(context: Context) : RasterTool(context) {
         var alpha = current.computeValueBasedOnSpeed(
             previous,
             next,
-            minValue = 0.1f,
-            maxValue = 0.6f,
+            minValue = MIN_ALPHA,
+            maxValue = MAX_ALPHA,
             minSpeed = 10f,
-            maxSpeed = 1400f
+            maxSpeed = MAX_SPEED,
+            // reverse behaviour
+            remap = { 1f - it}
         )
         if (alpha == null) {
             alpha = previousAlpha
         } else {
             previousAlpha = alpha
         }
-
         PathPoint(current.x, current.y, size = size, alpha = alpha)
     }
 
     override val stylusCalculator: Calculator = { previous, current, next ->
-        //we are going to base the size of the stroke on the pen tilt
-        //so the more the tilt the more the thick
-        var size = MathUtils.mapTo(current.altitudeAngle!!, Range(0f, Math.PI.toFloat()/2), Range(10f, 100f))
-        val offsetX = size * Math.sin(-current.azimuthAngle!!.toDouble()).toFloat() * 0.5f
-        val offsetY = size * Math.cos(current.azimuthAngle!!.toDouble()).toFloat() * 0.5f
+        // calculate the offset of the pencil tip due to tilted position
+        val cosAltitudeAngle = cos(current.altitudeAngle!!)
+        val sinAzimuthAngle = sin(current.azimuthAngle!!)
+        val cosAzimuthAngle = cos(current.azimuthAngle!!)
+        val x = sinAzimuthAngle * cosAltitudeAngle
+        val y = cosAltitudeAngle * cosAzimuthAngle
+        val offsetY = 5f * -x
+        val offsetX = 5f * -y
+        // compute the rotation
+        val rotation = current.computeNearestAzimuthAngle(previous)
+        // Normalize the tilt be minimum seen altitude angle and the maximum with the pen straight up
+        val tiltScale = min(1f,
+            ((PencilTool.PI_HALF - current.altitudeAngle!!) / (PencilTool.PI_HALF - PencilTool.MIN_ALTITUDE_ANGLE).toFloat()))
 
-        //the alpha channel is going to be based on pressure
-        var alpha = MathUtils.mapTo(current.force!!, Range(0f, 1f), Range(0.1f, 0.6f))
-
+        val size = max(
+            CrayonTool.MIN_CRAYON_SIZE, CrayonTool.MIN_CRAYON_SIZE
+                    + (CrayonTool.MAX_CRAYON_SIZE - CrayonTool.MIN_CRAYON_SIZE)
+                * tiltScale)
+        // Change the intensity of alpha value by pressure of speed, if available else use speed
+        var alpha = if (current.force == -1f) {
+            current.computeValueBasedOnSpeed(
+                previous,
+                next,
+                minValue = PencilTool.MIN_ALPHA,
+                maxValue = PencilTool.MAX_ALPHA,
+                minSpeed = 0f,
+                maxSpeed = 3500f,
+                // reverse behaviour
+                remap = { 1.0f - it}
+            )
+        } else {
+            current.computeValueBasedOnPressure(
+                minValue = PencilTool.MIN_ALPHA,
+                maxValue = PencilTool.MAX_ALPHA,
+                minPressure = 0.0f,
+                maxPressure = 1.0f,
+                remap = { v: Float -> v.toDouble().pow(1).toFloat() }
+            )
+        }
+        if (alpha == null) {
+            alpha = previousAlpha
+        } else {
+            previousAlpha = alpha
+        }
         PathPoint(
-            current.x,
-            current.y,
-            size = size,
-            alpha = alpha,
-            offsetX = offsetX,
-            offsetY = -offsetY
+            current.x, current.y,
+            alpha = alpha, size = size, rotation = rotation,
+            offsetX = offsetX, offsetY = offsetY
         )
     }
 }

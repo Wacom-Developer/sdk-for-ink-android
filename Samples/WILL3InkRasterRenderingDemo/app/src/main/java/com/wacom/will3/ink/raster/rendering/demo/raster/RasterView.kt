@@ -122,9 +122,6 @@ class RasterView @JvmOverloads constructor(
     }
 
     // This function is going to be call when we touch the surface
-    // Note that we don't override the onTouch function because in this
-    // example we are using two views, one for raster inking and one for
-    // vector inking and we want to process the touch for both of them
     fun surfaceTouch(event: MotionEvent) {
         if (event.resolveToolType() == InkInputType.PEN) {
             if ((newTool) || (!isStylus)) {
@@ -293,17 +290,6 @@ class RasterView @JvmOverloads constructor(
         val style = stroke.data.style
         val renderModeUri = stroke.data.style?.renderModeUri ?: ""
         var renderMode = BlendMode.values().find { it.uri() == renderModeUri } ?: BlendMode.SOURCE_OVER
-
-        /*defaults.size = style?.props?.size ?: 10f
-        defaults.rotation = style?.props?.rotation ?: 0.0f
-
-        defaults.scaleX = style?.props?.scaleX ?: 1.0f
-        defaults.scaleY = style?.props?.scaleY ?: 1.0f
-        defaults.scaleZ = style?.props?.scaleZ ?: 1.0f
-
-        defaults.offsetX = style?.props?.offsetX ?: 0.0f
-        defaults.offsetY = style?.props?.offsetY ?: 0.0f
-        defaults.offsetZ = style?.props?.offsetZ ?: 0.0f*/
 
         defaults.red = style?.props?.red ?: 0f
         defaults.green = style?.props?.green ?: 0f

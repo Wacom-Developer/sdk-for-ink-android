@@ -13,6 +13,7 @@ import com.wacom.will3.ink.vector.rendering.demo.computeValueBasedOnPressure
 import com.wacom.will3.ink.vector.rendering.demo.tools.MathUtils
 import com.wacom.will3.ink.vector.rendering.demo.tools.Range
 import kotlin.math.cos
+import kotlin.math.pow
 
 class PenTool : VectorTool() {
 
@@ -57,7 +58,7 @@ class PenTool : VectorTool() {
             initialValue = 3f,
             finalValue = 1.5f,
             minValue = 1.5f,
-            maxValue = 3f,
+            maxValue = 5f,
             minSpeed = 180f,
             maxSpeed = 2100f,
             remap = { v: Float -> MathUtils.power(v, 0.35f) })
@@ -68,17 +69,34 @@ class PenTool : VectorTool() {
             previousSize = size
         }
 
-        PathPoint(current.x, current.y, size = size)
+        PathPoint(
+            current.x,
+            current.y,
+            size = size)
     }
 
     override val stylusCalculator: Calculator = { previous, current, next ->
-        //the width is going to be based on pressure
-        var size = current.computeValueBasedOnPressure(
-            minValue = 1.5f,
-            maxValue = 3f,
-            minPressure = 180f,
-            maxPressure = 2100f,
-            remap = { v: Float -> MathUtils.power(v, 0.35f) })
+        // the width is going to be based on pressure
+        var size = if (current.force == -1f) {
+            current.computeValueBasedOnSpeed(
+                previous,
+                next,
+                minValue = 1f,
+                maxValue = 3f,
+                minSpeed = 0f,
+                maxSpeed = 3500f,
+                remap = { v: Float -> v.toDouble().pow(1.17).toFloat() }
+            )
+
+        } else {
+            current.computeValueBasedOnPressure(
+                minValue = 1f,
+                maxValue = 3f,
+                minPressure = 0.0f,
+                maxPressure = 1.0f,
+                remap = { v: Float -> v.toDouble().pow(1.17).toFloat() }
+            )
+        }
 
         if (size == null) {
             size = previousSize

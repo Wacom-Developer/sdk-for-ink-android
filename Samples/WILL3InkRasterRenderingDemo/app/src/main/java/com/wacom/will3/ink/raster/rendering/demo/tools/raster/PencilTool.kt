@@ -11,21 +11,42 @@ import com.wacom.ink.PathPointLayout
 import com.wacom.will3.ink.raster.rendering.demo.brush.BrushPalette
 import com.wacom.will3.ink.raster.rendering.demo.brush.URIBuilder
 import com.wacom.will3.ink.raster.rendering.demo.computeValueBasedOnPressure
-import com.wacom.will3.ink.raster.rendering.demo.tools.MathUtils
-import com.wacom.will3.ink.raster.rendering.demo.tools.Range
-import kotlin.math.cos
+import kotlin.math.*
 
 class PencilTool(context: Context) : RasterTool(context) {
+    private var previousSize = MIN_PENCIL_SIZE
 
     companion object {
         val uri = URIBuilder.getToolURI("raster", "pencil")
+
+        // Minimum size of the pencil tip
+        val MIN_PENCIL_SIZE = 4f
+
+        // Maximum size of the pencil tip
+        val MAX_PENCIL_SIZE = 25f
+
+        // Minimum alpha values for the particles
+        val MIN_ALPHA = 0.1f
+
+        // Maximum alpha values for the particles
+        val MAX_ALPHA = 0.7f
+
+        //  Unit for speed is px/second.
+        //  NOTE: This needs to be optimized for different Pixel densities of different devices
+        val MAX_SPEED = 15000f
+
+        // Half PI value
+        val PI_HALF = (PI / 2f).toFloat()
+
+        // Minimum altitude angle seen in experiments
+        val MIN_ALTITUDE_ANGLE = 0.4
     }
 
     override var brush = BrushPalette.pencil(context)
-    var previousSize = 6f
     var previousAlpha = 0.2f
 
     override fun getLayout(): PathPointLayout {
+        // Define different layouts for stylus and touch input
         if (isStylus) {
             return PathPointLayout(
                 PathPoint.Property.X,
@@ -50,12 +71,12 @@ class PencilTool(context: Context) : RasterTool(context) {
         var size = current.computeValueBasedOnSpeed(
             previous,
             next,
-            initialValue = 6f,
-            finalValue = 10f,
-            minValue = 6f,
-            maxValue = 10f,
+            minValue = MIN_PENCIL_SIZE,
+            maxValue = MAX_PENCIL_SIZE,
             minSpeed = 80f,
-            maxSpeed = 1400f
+            maxSpeed = MAX_SPEED,
+            // reverse behaviour
+            remap = { 1f - it }
         )
 
         if (size == null) {
@@ -67,12 +88,12 @@ class PencilTool(context: Context) : RasterTool(context) {
         var alpha = current.computeValueBasedOnSpeed(
             previous,
             next,
-            initialValue = 0.2f,
-            finalValue = 4f,
-            minValue = 0.2f,
-            maxValue = 4f,
+            minValue = MIN_ALPHA,
+            maxValue = MAX_ALPHA,
             minSpeed = 80f,
-            maxSpeed = 1400f
+            maxSpeed = MAX_SPEED,
+            // reverse behaviour
+            remap = { 1f - it }
         )
 
         if (alpha == null) {
@@ -85,35 +106,54 @@ class PencilTool(context: Context) : RasterTool(context) {
     }
 
     override val stylusCalculator: Calculator = { previous, current, next ->
-        //the width is going to be based on pressure
-        var size = current.computeValueBasedOnPressure(
-            minValue = 6f,
-            maxValue = 10f,
-            minPressure = 80f,
-            maxPressure = 1400f
-        )!!
+        // calculate the offset of the pencil tip due to tilted position
+        val cosAltitudeAngle = cos(current.altitudeAngle!!)
+        val sinAzimuthAngle = sin(current.azimuthAngle!!)
+        val cosAzimuthAngle = cos(current.azimuthAngle!!)
+        val x = sinAzimuthAngle * cosAltitudeAngle
+        val y = cosAltitudeAngle * cosAzimuthAngle
+        val offsetY = 5f * -x
+        val offsetX = 5f * -y
+        // compute the rotation
+        val rotation = current.computeNearestAzimuthAngle(previous)
+        // Normalize the tilt be minimum seen altitude angle and the maximum with the pen straight up
+        val tiltScale = min(1f,
+            ((PI_HALF - current.altitudeAngle!!) / (PI_HALF - MIN_ALTITUDE_ANGLE).toFloat()))
+        // now, based on the tilt of the pencil the size of the brush size is increasing, as the
+        // pencil tip is covering a larger area
+        val size = max( MIN_PENCIL_SIZE, MIN_PENCIL_SIZE + (MAX_PENCIL_SIZE - MIN_PENCIL_SIZE)
+                * tiltScale)
+        // Change the intensity of alpha value by pressure of speed, if available else use speed
+        var alpha = if (current.force == -1f) {
+            current.computeValueBasedOnSpeed(
+                previous,
+                next,
+                minValue = MIN_ALPHA,
+                maxValue = MAX_ALPHA,
+                minSpeed = 0f,
+                maxSpeed = MAX_SPEED,
+                // reverse behaviour
+                remap = { 1.0f - it }
+            )
+        } else {
+            current.computeValueBasedOnPressure(
+                minValue = MIN_ALPHA,
+                maxValue = MAX_ALPHA,
+                minPressure = 0.0f,
+                maxPressure = 1.0f,
+                remap = { v: Float -> v.toDouble().pow(1).toFloat() }
+            )
+        }
 
-        //the alpha channel is going to be based on pressure
-        var alpha = current.computeValueBasedOnPressure(
-            minValue = 0.2f,
-            maxValue = 4f,
-            minPressure = 80f,
-            maxPressure = 1400f
-        )
-
-        // if we tilt the pen we have bigger size
-        size += MathUtils.mapTo(current.altitudeAngle!!, Range(0f, Math.PI.toFloat()/2), Range(0f, 10f))
-
-        val offsetX = size * Math.sin(-current.azimuthAngle!!.toDouble()).toFloat() * 0.5f
-        val offsetY = size * Math.cos(current.azimuthAngle!!.toDouble()).toFloat() * 0.5f
-
+        if (alpha == null) {
+            alpha = previousAlpha
+        } else {
+            previousAlpha = alpha
+        }
         PathPoint(
-            current.x,
-            current.y,
-            size = size,
-            alpha = alpha,
-            offsetX = offsetX,
-            offsetY = offsetY
+            current.x, current.y,
+            alpha = alpha, size = size, rotation = rotation,
+            offsetX = offsetX, offsetY = offsetY
         )
     }
 }
