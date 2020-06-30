@@ -4,7 +4,6 @@
  */
 package com.wacom.will3.ink.raster.rendering.demo
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.view.MotionEvent
@@ -12,13 +11,12 @@ import com.wacom.ink.Phase
 import com.wacom.ink.PointerData
 import com.wacom.ink.format.enums.InkInputType
 import com.wacom.ink.format.rendering.RasterBrush
-import com.wacom.ink.format.rendering.Style
-import com.wacom.ink.format.tree.nodes.StrokeNode
 import com.wacom.ink.rasterization.ParticleBrush
 import com.wacom.ink.rasterization.RotationMode
 import com.wacom.ink.rendering.BlendMode
 import com.wacom.will3.ink.raster.rendering.demo.tools.raster.*
 import com.wacom.will3.ink.raster.rendering.demo.tools.Tool
+import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
 
@@ -34,6 +32,15 @@ fun MotionEvent.toPointerData(): PointerData {
         MotionEvent.ACTION_UP -> Phase.END
         else -> Phase.END
     }
+    // compute the azimuth angle to achieve cross-platform consistency
+    val orientationAngle = getOrientation(0) + PI / 2
+    val azimuthAngle = if (orientationAngle > PI) {
+        (orientationAngle - 2 * PI).toFloat()
+    } else {
+        orientationAngle.toFloat()
+    }
+    // compute the altitude angle to achieve cross-platform consistency
+    val altitudeAngle = (PI / 2 - this.getAxisValue(MotionEvent.AXIS_TILT, 0)).toFloat()
 
     return PointerData(
         this.x,
@@ -41,8 +48,8 @@ fun MotionEvent.toPointerData(): PointerData {
         phase,
         timestamp = this.eventTime,
         force = this.pressure,
-        altitudeAngle = getAxisValue(MotionEvent.AXIS_TILT),
-        azimuthAngle = orientation
+        altitudeAngle = altitudeAngle,
+        azimuthAngle = azimuthAngle
     )
 }
 
@@ -54,15 +61,22 @@ fun MotionEvent.toPointerData(): PointerData {
  */
 fun MotionEvent.historicalToPointerData(index: Int): PointerData {
     val phase = Phase.UPDATE
-
+    val orientationAngle = getHistoricalOrientation(0, index) + PI /2
+    val azimuthAngle = if (orientationAngle > PI) {
+        (orientationAngle - 2 * PI).toFloat()
+    } else {
+        orientationAngle.toFloat()
+    }
+    val altitudeAngle = (PI / 2 - this.getHistoricalAxisValue(MotionEvent.AXIS_TILT, index)).toFloat()
     return PointerData(
         getHistoricalX(index), getHistoricalY(index),
         phase, timestamp = getHistoricalEventTime(index),
         force = getHistoricalPressure(index),
-        altitudeAngle = getHistoricalAxisValue(MotionEvent.AXIS_TILT, index),
-        azimuthAngle = orientation
+        altitudeAngle = altitudeAngle,
+        azimuthAngle = azimuthAngle
     )
 }
+
 
 fun MotionEvent.resolveToolType(): InkInputType {
     return when (this.getToolType(0)) {
@@ -90,11 +104,31 @@ fun RasterBrush.toParticleBrush(): ParticleBrush {
     opts.inSampleSize = 1
     opts.inScaled = false
 
-
-    val shapeTextures = Array<Bitmap>(shapeTextures.size) {
+    var shapeTextures = Array<Bitmap>(shapeTextures.size) {
         val bytes = shapeTextures[it]
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     }
+
+    //OpenGl needs all the texture sizes to be defined on there are more than one size, however we can found brushes without all the texture
+    //sizes, so we need to generate the rest
+    if (shapeTextures.size > 1) {
+        val shapeTextureList = mutableListOf<Bitmap>()
+        val maxTexture = shapeTextures.maxBy { it.width }
+        var textureWidth = maxTexture!!.width
+        while (textureWidth >= 1) {
+            val bmp = shapeTextures.find { it.width == textureWidth }
+            if (bmp != null) {
+                shapeTextureList.add(bmp)
+            } else {
+                // we need to generate the texture and added it to the list
+                // in order to do that we are going to escale the max texture
+                shapeTextureList.add(Bitmap.createScaledBitmap(maxTexture, textureWidth, textureWidth, false))
+            }
+            textureWidth /= 2
+        }
+        shapeTextures = shapeTextureList.toTypedArray()
+    }
+
 
     val fillTexture = BitmapFactory.decodeByteArray(fillTexture, 0, fillTexture.size, opts)
 
@@ -107,23 +141,10 @@ fun Tool.uri(): String {
     when (this) {
         is CrayonTool -> return CrayonTool.uri
         is EraserRasterTool -> return EraserRasterTool.uri
-        is InkBrushTool -> return InkBrushTool.uri
         is PencilTool -> return PencilTool.uri
         is WaterbrushTool -> return WaterbrushTool.uri
     }
-
-    return return PencilTool.uri //default value
-}
-
-fun StrokeNode.createRasterTool(context: Context): RasterTool {
-    return when (data.style!!.brushURI) {
-        CrayonTool.uri -> CrayonTool(context)
-        EraserRasterTool.uri -> EraserRasterTool(context)
-        InkBrushTool.uri -> InkBrushTool(context)
-        WaterbrushTool.uri -> WaterbrushTool(context)
-        //PencilTool.uri -> return PencilTool(context)
-        else -> PencilTool(context) //default tool
-    }
+    return PencilTool.uri
 }
 
 /**
