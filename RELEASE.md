@@ -1,4 +1,4 @@
-# SDK for ink - Android
+# WILL SDK for ink - Android
 
 ## Version 3.0.0
 
