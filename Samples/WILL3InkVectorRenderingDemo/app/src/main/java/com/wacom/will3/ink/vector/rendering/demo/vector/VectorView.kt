@@ -34,9 +34,8 @@ import com.wacom.will3.ink.vector.rendering.demo.tools.vector.PenTool
 import com.wacom.will3.ink.vector.rendering.demo.tools.vector.VectorTool
 import com.wacom.will3.ink.vector.rendering.demo.uri
 import kotlinx.android.synthetic.main.activity_main.*
-import kotlinx.coroutines.newSingleThreadContext
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 /**
@@ -57,6 +56,7 @@ class VectorView @JvmOverloads constructor(
 
     var drawingTool: VectorTool = PenTool() // default tool
     var inkBuilder = VectorInkBuilder()
+    var deleteInkBuilder = VectorInkBuilder()
 
     private var currentPath =
         Path() // This will contain the current drawing path before it is finished
@@ -76,6 +76,7 @@ class VectorView @JvmOverloads constructor(
     private lateinit var spatialModel: SpatialModel // The spatial model is user for
     private lateinit var undoManager: UndoManager
 
+    val scope = CoroutineScope(newFixedThreadPoolContext(4, "synchronizationPool"))
     val counterContext = newSingleThreadContext("CounterContext")
 
     private var unprocessedBegin = false
@@ -93,6 +94,11 @@ class VectorView @JvmOverloads constructor(
     private val INVALID_POINTER_ID = -1
     private var activePointerID: Int = INVALID_POINTER_ID
     private var lastEvent: MotionEvent? = null
+
+    private val defaultScope = CoroutineScope(Dispatchers.Default)
+    private var taskFinished = AtomicBoolean(true)
+    private var nextSpline: Spline? = null
+
 
     fun setSpatialModel(spatialModel: SpatialModel) {
         this.spatialModel = spatialModel
@@ -130,7 +136,10 @@ class VectorView @JvmOverloads constructor(
         } else {
             paint.color = currentColor
         }
-        canvas.drawPath(currentPath, paint)
+
+        if (drawingTool.uri() != EraserVectorTool.uri) {
+            canvas.drawPath(currentPath, paint)
+        }
     }
 
     fun onTouch(event: MotionEvent) {
@@ -199,12 +208,14 @@ class VectorView @JvmOverloads constructor(
                 newTool = false
                 isStylus = true
                 inkBuilder.updateInputMethod(isStylus)
+                deleteInkBuilder.updateInputMethod(isStylus)
             }
         } else {
             if ((newTool) || (isStylus)) {
                 newTool = false
                 isStylus = false
                 inkBuilder.updateInputMethod(isStylus)
+                deleteInkBuilder.updateInputMethod(isStylus)
             }
         }
 
@@ -260,8 +271,17 @@ class VectorView @JvmOverloads constructor(
             } else if ((drawingTool.drawingMode == VectorTool.DrawingMode.ERASING_WHOLE_STROKE) ||
                 (drawingTool.drawingMode == VectorTool.DrawingMode.ERASING_PARTIAL_STROKE)
             ) {
-                if (pointerData.phase == Phase.END) {
-                    removeStroke(inkBuilder.splineProducer.allData!!.copy())
+                //if (pointerData.phase == Phase.END) {
+                if (inkBuilder.splineProducer.allData != null) {
+                    if (!inkBuilder.splineProducer.allData!!.equals(nextSpline)) {
+                        nextSpline = inkBuilder.splineProducer.allData!!.copy()
+                        if (taskFinished.getAndSet(false)) {
+                            scope.launch {
+                                removeStroke(nextSpline!!)
+                            }
+                        }
+                    }
+                    //}
                 }
             } else {
                 // Assume we are selecting
@@ -285,7 +305,10 @@ class VectorView @JvmOverloads constructor(
                 currentPath = Path()
             }
 
-            invalidate()
+            //if (drawingTool.drawingMode != VectorTool.DrawingMode.ERASING_WHOLE_STROKE) {
+            if (taskFinished.get()) {
+                invalidate()
+            }
 
         } else if (pointerData.phase == Phase.BEGIN) {
             unprocessedBegin = true
@@ -321,35 +344,35 @@ class VectorView @JvmOverloads constructor(
         strokes[stroke.id] = stroke
     }
 
-    fun removeStroke(spline: Spline) {
-        runBlocking {
-            withContext(counterContext) {
-                val removed = arrayListOf<String>()
+    suspend fun removeStroke(spline: Spline) {
+        //runBlocking {
+        //withContext(Dispatchers.Default) {
+        //runBlocking {
+        val removed = arrayListOf<String>()
+        spatialModel.erase(
+            spline,
+            drawingTool.brush,
+            if (drawingTool.drawingMode == VectorTool.DrawingMode.ERASING_PARTIAL_STROKE)
+                ManipulationMode.PARTIAL_STROKE else ManipulationMode.WHOLE_STROKE,
+            object : ErasingCallback {
+                override fun onStrokeAdded(stroke: InkStroke) {
+                    deleteBuildStroke(stroke as WillStroke)
+                    for (id in removed) strokes.remove(id)
+                }
 
-                spatialModel.erase(
-                    spline,
-                    drawingTool.brush,
-                    if (drawingTool.drawingMode == VectorTool.DrawingMode.ERASING_PARTIAL_STROKE)
-                        ManipulationMode.PARTIAL_STROKE else ManipulationMode.WHOLE_STROKE,
-                    object : ErasingCallback {
-                        override fun onStrokeAdded(stroke: InkStroke) {
-                            buildStroke(stroke as WillStroke)
-                            for (id in removed) strokes.remove(id)
-                        }
-
-                        override fun onStrokeRemoved(id: String) {
-                            val removedStroke = strokes.remove(id)
-                            if (removedStroke == null) {
-                                removed.add(id)
-                            }
-                        }
+                override fun onStrokeRemoved(id: String) {
+                    val removedStroke = strokes.remove(id)
+                    if (removedStroke == null) {
+                        removed.add(id)
                     }
-                )
-                activity.runOnUiThread() {
-                    invalidate()
                 }
             }
-        }
+        )
+        invalidate()
+        taskFinished.set(true)
+        //}
+        //}
+        //}
     }
 
     fun selectStroke(spline: Spline) {
@@ -393,9 +416,9 @@ class VectorView @JvmOverloads constructor(
                     }
                 )
 
-                activity.runOnUiThread() {
-                    invalidate()
-                }
+                //activity.runOnUiThread() {
+                invalidate()
+                //}
             }
         }
     }
@@ -404,6 +427,7 @@ class VectorView @JvmOverloads constructor(
         newTool = true
         drawingTool = tool
         inkBuilder.updatePipeline(tool)
+        deleteInkBuilder.updatePipeline(tool)
         selectedStrokes.clear()
         setColor(currentColor)
     }
@@ -435,6 +459,17 @@ class VectorView @JvmOverloads constructor(
         addRequiredValuesToPath(stroke)
 
         val (path, _) = inkBuilder.buildPath(stroke.spline, null, true, true)
+        if (path != null) {
+            stroke.path = path
+            strokes[stroke.id] = stroke
+        }
+    }
+
+    fun deleteBuildStroke(stroke: WillStroke) {
+        // add the attributes
+        addRequiredValuesToPath(stroke)
+
+        val (path, _) = deleteInkBuilder.buildPath(stroke.spline, null, true, true)
         if (path != null) {
             stroke.path = path
             strokes[stroke.id] = stroke

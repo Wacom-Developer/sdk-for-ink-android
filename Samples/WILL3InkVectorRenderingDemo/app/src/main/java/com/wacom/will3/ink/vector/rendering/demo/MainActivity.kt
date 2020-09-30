@@ -8,10 +8,13 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PorterDuff
 import android.os.Bundle
-import android.view.*
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -21,8 +24,6 @@ import com.aditya.filebrowser.Constants
 import com.aditya.filebrowser.FileChooser
 import com.aditya.filebrowser.FolderChooser
 import com.wacom.ink.format.InkModel
-import com.wacom.ink.format.enums.InkInputType
-import com.wacom.ink.format.input.SensorChannel
 import com.wacom.ink.format.serialization.Will3Codec
 import com.wacom.ink.format.tree.data.Stroke
 import com.wacom.ink.format.tree.groups.StrokeGroupNode
@@ -64,32 +65,18 @@ class MainActivity : AppCompatActivity() {
     // Note: This is only necessary when we want to removing on vector inking
     private lateinit var spatialModel: SpatialModel
 
-    private var defaultDrawingTool = PenTool.uri
     private var drawingTool: Tool? = null
 
     private var popupWindow: PopupWindow? = null
 
     private var drawingColor: Int = Color.argb(255, 74, 74, 74)
 
-    private var tempStrokeFile: String? = null
     private var refreshing: Boolean = false
     private var currentBackground: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        if (savedInstanceState != null) {
-            drawingColor = savedInstanceState.getInt("selectedColor")
-            if (savedInstanceState.getString("selectedTool") != null) {
-                defaultDrawingTool = savedInstanceState.getString("selectedTool")!!
-            }
-            tempStrokeFile = savedInstanceState.getString("strokes")
-            currentBackground = savedInstanceState.getInt("currentBackground")
-            refreshing = true
-        } else {
-            resetInkModel() // Init and reset the InkModel for serialization
-        }
 
         inkEnvironmentModel =
             InkEnvironmentModel(this) // Initializes the environment data for serialization
@@ -106,37 +93,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         vectorDrawingView.inkEnvironmentModel = inkEnvironmentModel
-        vectorDrawingView.viewTreeObserver.addOnGlobalLayoutListener(object: ViewTreeObserver.OnGlobalLayoutListener {
-            override fun onGlobalLayout() {
-                if (tempStrokeFile != null) {
-                    load(tempStrokeFile)
-                    File(tempStrokeFile).delete()
-                    tempStrokeFile = null
-                }
-                vectorDrawingView.viewTreeObserver.removeOnGlobalLayoutListener(this)
-            }
-        })
 
         setTool(btn_pen, PenTool()) // Set default tool
         selectPaper(currentBackground)
-    }
-
-    override fun onSaveInstanceState(savedInstanceState: Bundle) {
-        super.onSaveInstanceState(savedInstanceState)
-
-        // save the current selected tool, color and strokes
-        refreshing = true
-        val tempFile = File(cacheDir, "tempStrokes.uim")
-        if (tempFile.exists()) {
-            tempFile.delete()
-        }
-        save(tempFile.absolutePath)
-
-        savedInstanceState.putString("strokes", tempFile.absolutePath)
-        savedInstanceState.putString("selectedTool", drawingTool?.uri())
-        savedInstanceState.putInt("selectedColor", drawingColor)
-
-        savedInstanceState.putInt("currentBackground", currentBackground)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -328,6 +287,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Saving..", Toast.LENGTH_SHORT).show()
         }
 
+        resetInkModel() // reset the InkModel for serialization
         inkEnvironmentModel.registerInModel(inkModel)
         inkModel.knowledgeGraph.add(
             inkModel.inkTree!!.root!!.id,
@@ -407,7 +367,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    fun selectPaper(pos:Int) {
+    fun selectPaper(pos: Int) {
         if (pos == 0) {
             changeBackground(R.drawable.btn_paper_01, R.drawable.background1)
         } else if (pos == 1) {
