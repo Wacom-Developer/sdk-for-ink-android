@@ -4,4 +4,11 @@
     <string name="sdk_name">WILL SDK for ink (Android)</string>
     <string name="sdk_version">v3.0.0</string>
     <string name="vector_eraser">Vector eraser</string>
+
+    <string name="loading">Loading...</string>
+    <string name="applying_changes">Applying changes...</string>
+    <string name="selecting_strokes">Selecting strokes...</string>
+    <string name="deleting">Deleting...</string>
+    <string name="drawing">Drawing</string>
+    <string name="exporting">Exporting...</string>
 </resources>

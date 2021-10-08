@@ -87,6 +87,8 @@ fun Tool.uri(): String {
         is MarkerTool -> return MarkerTool.uri
         is EraserVectorTool -> return EraserVectorTool.uri
         is EraserWholeStrokeTool -> return EraserWholeStrokeTool.uri
+        is SelectorWholeStrokeTool -> return SelectorWholeStrokeTool.uri
+        is SelectorPartialStrokeTool -> return SelectorPartialStrokeTool.uri
     }
      return PenTool.uri //default value
 }

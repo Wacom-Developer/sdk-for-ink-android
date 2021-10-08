@@ -113,7 +113,7 @@ fun RasterBrush.toParticleBrush(): ParticleBrush {
     //sizes, so we need to generate the rest
     if (shapeTextures.size > 1) {
         val shapeTextureList = mutableListOf<Bitmap>()
-        val maxTexture = shapeTextures.maxBy { it.width }
+        val maxTexture = shapeTextures.maxByOrNull { it.width }
         var textureWidth = maxTexture!!.width
         while (textureWidth >= 1) {
             val bmp = shapeTextures.find { it.width == textureWidth }

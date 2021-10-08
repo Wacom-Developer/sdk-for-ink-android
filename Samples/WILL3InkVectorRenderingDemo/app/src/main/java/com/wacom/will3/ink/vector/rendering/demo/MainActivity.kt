@@ -5,31 +5,31 @@
 package com.wacom.will3.ink.vector.rendering.demo
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.PorterDuff
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
-import android.widget.EditText
+import android.view.animation.AlphaAnimation
+import android.view.animation.Animation
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.aditya.filebrowser.Constants
-import com.aditya.filebrowser.FileChooser
-import com.aditya.filebrowser.FolderChooser
 import com.wacom.ink.format.InkModel
+import com.wacom.ink.format.input.SensorChannel
 import com.wacom.ink.format.serialization.Will3Codec
 import com.wacom.ink.format.tree.data.Stroke
 import com.wacom.ink.format.tree.groups.StrokeGroupNode
 import com.wacom.ink.format.tree.nodes.StrokeNode
 import com.wacom.ink.manipulation.SpatialModel
-import com.wacom.ink.model.IdentifiableImpl
+import com.wacom.ink.model.Identifier
 import com.wacom.ink.model.StrokeAttributes
 import com.wacom.ink.rendering.VectorBrush
 import com.wacom.will3.ink.vector.rendering.demo.serialization.InkEnvironmentModel
@@ -38,23 +38,23 @@ import com.wacom.will3.ink.vector.rendering.demo.tools.vector.*
 import com.wacom.will3.ink.vector.rendering.demo.vector.WillStroke
 import com.wacom.will3.ink.vector.rendering.demo.vector.WillStrokeFactory
 import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.newSingleThreadContext
 import top.defaults.colorpicker.ColorPickerPopup
 import top.defaults.colorpicker.ColorPickerPopup.ColorPickerObserver
-import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.OutputStream
+
 
 class MainActivity : AppCompatActivity() {
 
     val OPEN_FILE_ACTION = 1
-    val SELECT_FOLDER_ACTION = 2
+    val CREATE_FILE_ACTION = 2
 
     //-- Variables For serialisation
-    private lateinit var mainGroup: StrokeGroupNode // This is a list of StrokeNode.
 
-    // A StrokeNode contains information about an Stroke
-    private lateinit var inkModel: InkModel // This is the main serializable class, what we save and
+    private var loadedInkModel: InkModel? = null
 
     // Environment information to save in the ink model
     private lateinit var inkEnvironmentModel: InkEnvironmentModel
@@ -71,8 +71,16 @@ class MainActivity : AppCompatActivity() {
 
     private var drawingColor: Int = Color.argb(255, 74, 74, 74)
 
-    private var refreshing: Boolean = false
     private var currentBackground: Int = 0
+
+    private val scope = CoroutineScope(newSingleThreadContext("loadingPool"))
+
+    val anim: Animation = AlphaAnimation(0.0f, 1.0f).also {
+        it.setDuration(1000)
+        it.setStartOffset(20)
+        it.setRepeatMode(Animation.REVERSE)
+        it.setRepeatCount(Animation.INFINITE)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,8 +94,12 @@ class MainActivity : AppCompatActivity() {
         vectorDrawingView.activity = this
 
         setColor(drawingColor) //set default color
-        vectorDrawingView.setOnTouchListener { _, event ->
 
+        delete_background_waiting.setOnTouchListener { _, event ->
+            true
+        }
+
+        vectorDrawingView.setOnTouchListener { _, event ->
             vectorDrawingView.onTouch(event)
             true
         }
@@ -105,9 +117,11 @@ class MainActivity : AppCompatActivity() {
         if (resultCode == Activity.RESULT_OK) {
             // Check which request we're responding to
             if (requestCode == OPEN_FILE_ACTION) {
-                load(data!!.data!!.path)
-            } else if (requestCode == SELECT_FOLDER_ACTION) {
-                openSaveAsDialog(data!!.data!!.path)
+                scope.launch {
+                    load(data!!.data!!)
+                }
+            } else if (requestCode == CREATE_FILE_ACTION) {
+                save(data!!.data!!)
             }
         }
     }
@@ -169,90 +183,98 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun load(view: View) {
-        val intent = Intent(applicationContext, FileChooser::class.java)
-        intent.putExtra(
-            Constants.SELECTION_MODE,
-            Constants.SELECTION_MODES.SINGLE_SELECTION.ordinal
-        )
-        intent.putExtra(Constants.ALLOWED_FILE_EXTENSIONS, "uim")
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.setType("*/*");
         startActivityForResult(intent, OPEN_FILE_ACTION)
     }
 
-    fun load(path: String?) {
-        if (!refreshing) {
-            Toast.makeText(this, "Loading..", Toast.LENGTH_SHORT).show()
-        }
+    fun load(path: Uri) {
+        this@MainActivity.runOnUiThread(java.lang.Runnable {
+            openBackground(getString(R.string.loading), true)
+            // Before loading we clear the screen
+            clear(null)
+        })
 
-        // Before loading we clear the screen
-        vectorDrawingView.clear();
+        var zOrder = 0
 
         try {
-            val fileInputStream = FileInputStream(File(path))
+            getContentResolver().openFileDescriptor(path, "r").use { pfd ->
+                FileInputStream(pfd?.fileDescriptor).use { fileInputStream ->
 
-            val bytes = fileInputStream.readBytes()
-            inkModel = Will3Codec.decode(bytes)
-            mainGroup = inkModel.inkTree!!.root!! as StrokeGroupNode
+                    val bytes = fileInputStream.readBytes()
+                    loadedInkModel = Will3Codec.decode(bytes)
 
-            val it = inkModel.inkTree!!.root!!.iterator()
-            while (it.hasNext()) {
-                val stroke = it.next()
-                if (stroke is StrokeNode) {
-                    val brushUri = stroke.data.style?.brushURI
-                    if (brushUri != null) {
-                        val brush = inkModel.brushRepository.getBrush(brushUri)
-                        if (brush is VectorBrush) {
-                            val spline = stroke.data.spline
+                    val it = loadedInkModel?.inkTree!!.root!!.iterator()
+                    while (it.hasNext()) {
+                        val stroke = it.next()
+                        if (stroke is StrokeNode) {
+                            val brushUri = stroke.data.style?.brushURI
+                            if (brushUri != null) {
+                                val brush = loadedInkModel?.brushRepository?.getBrush(brushUri)
+                                if (brush is VectorBrush) {
+                                    val spline = stroke.data.spline
 
-                            val willStroke = WillStroke(spline, brush)
-                            willStroke.strokeNode = stroke
+                                    val willStroke = WillStroke(spline, brush, zOrder++)
+                                    willStroke.strokeNode = stroke
 
-                            if (stroke.data.sensorDataID != null) {
-                                willStroke.sensorData =
-                                    inkModel.sensorDataRepository.get(stroke.data.sensorDataID!!)
-                            }
-
-                            willStroke.strokeAttributes = object : StrokeAttributes {
-                                override var size: Float = stroke.data.style?.props?.size ?: 10f
-                                override var rotation: Float =
-                                    stroke.data.style?.props?.rotation ?: 0.0f
-
-                                override var scaleX: Float =
-                                    stroke.data.style?.props?.scaleX ?: 1.0f
-                                override var scaleY: Float =
-                                    stroke.data.style?.props?.scaleY ?: 1.0f
-                                override var scaleZ: Float =
-                                    stroke.data.style?.props?.scaleZ ?: 1.0f
-
-                                override var offsetX: Float =
-                                    stroke.data.style?.props?.offsetX ?: 0.0f
-                                override var offsetY: Float =
-                                    stroke.data.style?.props?.offsetY ?: 0.0f
-                                override var offsetZ: Float =
-                                    stroke.data.style?.props?.offsetZ ?: 0.0f
-
-                                override var red: Float = stroke.data.style?.props?.red ?: 0f
-                                override var green: Float = stroke.data.style?.props?.green ?: 0f
-                                override var blue: Float = stroke.data.style?.props?.blue ?: 0f
-                                override var alpha: Float = stroke.data.style?.props?.alpha ?: 1f
-                            }
-
-                            synchronized(spatialModel) {
-                                /*var sensorChannelList: List<SensorChannel>? = null
-                                val inputContextId = willStroke.sensorData?.inputContextId
-                                if (inputContextId != null) {
-                                    val sensorContextId =
-                                        inkModel.inputConfiguration.getInputContext(inputContextId)
-                                            ?.sensorContextId
-                                    if (sensorContextId != null) {
-                                        sensorChannelList =
-                                            inkModel.inputConfiguration.getSensorContext(
-                                                sensorContextId
-                                            )?.getSensorChannelsContexts()?.first()?.getAll()
+                                    if (stroke.data.sensorDataID != null) {
+                                        willStroke.sensorData =
+                                            loadedInkModel?.sensorDataRepository?.get(stroke.data.sensorDataID!!)
                                     }
-                                }*/
 
-                                vectorDrawingView.buildStroke(willStroke)
-                                spatialModel.add(willStroke)
+                                    willStroke.strokeAttributes = object : StrokeAttributes {
+                                        override var size: Float =
+                                            stroke.data.style?.props?.size ?: 10f
+                                        override var rotation: Float =
+                                            stroke.data.style?.props?.rotation ?: 0.0f
+
+                                        override var scaleX: Float =
+                                            stroke.data.style?.props?.scaleX ?: 1.0f
+                                        override var scaleY: Float =
+                                            stroke.data.style?.props?.scaleY ?: 1.0f
+                                        override var scaleZ: Float =
+                                            stroke.data.style?.props?.scaleZ ?: 1.0f
+
+                                        override var offsetX: Float =
+                                            stroke.data.style?.props?.offsetX ?: 0.0f
+                                        override var offsetY: Float =
+                                            stroke.data.style?.props?.offsetY ?: 0.0f
+                                        override var offsetZ: Float =
+                                            stroke.data.style?.props?.offsetZ ?: 0.0f
+
+                                        override var red: Float =
+                                            stroke.data.style?.props?.red ?: 0f
+                                        override var green: Float =
+                                            stroke.data.style?.props?.green ?: 0f
+                                        override var blue: Float =
+                                            stroke.data.style?.props?.blue ?: 0f
+                                        override var alpha: Float =
+                                            stroke.data.style?.props?.alpha ?: 1f
+                                    }
+
+                                    synchronized(spatialModel) {
+                                        var sensorChannelList: List<SensorChannel>? = null
+                                        val inputContextId = willStroke.sensorData?.inputContextId
+                                        if (inputContextId != null) {
+                                            val sensorContextId =
+                                                loadedInkModel?.inputConfiguration?.getInputContext(
+                                                    inputContextId
+                                                )
+                                                    ?.sensorContextId
+                                            if (sensorContextId != null) {
+                                                sensorChannelList =
+                                                    loadedInkModel?.inputConfiguration?.getSensorContext(
+                                                        sensorContextId
+                                                    )?.getSensorChannelsContexts()?.first()
+                                                        ?.getAll()
+                                            }
+                                        }
+
+                                        vectorDrawingView.buildStroke(willStroke, sensorChannelList)
+                                        spatialModel.add(willStroke)
+                                    }
+                                }
                             }
                         }
                     }
@@ -262,87 +284,120 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
         }
 
-        if (!refreshing) {
+        vectorDrawingView.setZOrder(zOrder)
+        vectorDrawingView.createBmps()
+        vectorDrawingView.updateDrawing()
+
+        this@MainActivity.runOnUiThread(java.lang.Runnable {
             Toast.makeText(this, "Loading completed.", Toast.LENGTH_SHORT).show()
-        }
+            closeBackground()
+        })
     }
 
-    private fun resetInkModel() {
-        inkModel = InkModel()
+    fun save(uri: Uri) {
+        Toast.makeText(this, "Saving..", Toast.LENGTH_SHORT).show()
 
-        val root = StrokeGroupNode(IdentifiableImpl.generateUUID())
-
+        val inkModel = InkModel()
+        val root = StrokeGroupNode(Identifier())
         inkModel.inkTree.root = root
-        mainGroup = StrokeGroupNode(IdentifiableImpl.generateUUID())
+        val mainGroup = StrokeGroupNode(Identifier())
         root.add(mainGroup)
 
-        //TODO inkModel.brushRepository.addVectorBrush(brush)
-        //TODO splines.clear()
-        //TODO paths.clear()
-    }
-
-
-    fun save(filePath: String?) {
-        if (!refreshing) {
-            Toast.makeText(this, "Saving..", Toast.LENGTH_SHORT).show()
-        }
-
-        resetInkModel() // reset the InkModel for serialization
         inkEnvironmentModel.registerInModel(inkModel)
         inkModel.knowledgeGraph.add(
-            inkModel.inkTree!!.root!!.id,
+            inkModel.inkTree!!.root!!.id.toUUIDString(),
             "created",
             "" + System.currentTimeMillis()
         )
-        inkModel.knowledgeGraph.add(inkModel.inkTree!!.root!!.id, "author", "WILL 3")
+        inkModel.knowledgeGraph.add(inkModel.inkTree!!.root!!.id.toUUIDString(), "author", "WILL 3")
 
-        // For vector serialization
-        for ((_, stroke) in spatialModel.getStrokes()) {
-            stroke as WillStroke
-            if (stroke.sensorData != null) {
-                inkModel.sensorDataRepository.add(stroke.sensorData!!)
+        if (loadedInkModel != null) {
+            loadedInkModel?.inputConfiguration?.getAllEnvironments()?.forEach{ (id, environment) ->
+                if (inkModel.inputConfiguration.getEnvironment(environment.id) == null) {
+                    inkModel.inputConfiguration.add(environment)
+                }
             }
-
-            if (inkModel.brushRepository.getBrush(stroke.vectorBrush.name) == null) {
-                inkModel.brushRepository.addVectorBrush(stroke.vectorBrush)
+            loadedInkModel?.inputConfiguration?.getAllInkInputProviders()?.forEach{ (id, inputProvider) ->
+                if (inkModel.inputConfiguration.getInputProvider(inputProvider.id) == null) {
+                    inkModel.inputConfiguration.add(inputProvider)
+                }
             }
-
-            if (stroke.strokeNode == null) {
-                stroke.strokeNode = StrokeNode(
-                    IdentifiableImpl.generateUUID(),
-                    Stroke(
-                        stroke.id,
-                        stroke.spline,
-                        stroke.createStyle(),
-                        stroke.sensorData?.id,
-                        stroke.sensorDataOffset
-                    )
-                )
+            loadedInkModel?.inputConfiguration?.getAllInputContexts()?.forEach{ (id, inputContext) ->
+                if (inkModel.inputConfiguration.getInputContext(inputContext.id) == null) {
+                    inkModel.inputConfiguration.add(inputContext)
+                }
             }
-
-            if (!mainGroup.contains(stroke.strokeNode!!)) {
-                mainGroup.add(stroke.strokeNode!!)
+            loadedInkModel?.inputConfiguration?.getAllInputDevices()?.forEach{ (id, inputDevices) ->
+                if (inkModel.inputConfiguration.getInputDevice(inputDevices.id) == null) {
+                    inkModel.inputConfiguration.add(inputDevices)
+                }
+            }
+            loadedInkModel?.inputConfiguration?.getAllSensorContexts()?.forEach{ (id, sensorContext) ->
+                if (inkModel.inputConfiguration.getSensorContext(sensorContext.id) == null) {
+                    inkModel.inputConfiguration.add(sensorContext)
+                }
             }
         }
 
-        var fileOutputStream: OutputStream? = null
+        // For vector serialization
+        val sortedStrokes = spatialModel.getStrokes().values.toList().sortedBy { (it as WillStroke).zOrder }
+
+        for (stroke in sortedStrokes) {
+            try {
+                stroke as WillStroke
+                if (stroke.sensorData != null) {
+                    if (!inkModel.sensorDataRepository.contains(stroke?.sensorData?.id!!)) {
+                        inkModel.sensorDataRepository.add(stroke.sensorData!!)
+                    }
+                }
+
+                if (inkModel.brushRepository.getBrush(stroke.vectorBrush.name) == null) {
+                    inkModel.brushRepository.addVectorBrush(stroke.vectorBrush)
+                }
+
+                if (stroke.strokeNode == null) {
+                    stroke.strokeNode = StrokeNode(
+                        Stroke(
+                            stroke.id,
+                            stroke.spline,
+                            stroke.createStyle(),
+                            stroke.sensorData?.id,
+                            stroke.sensorDataOffset
+                        )
+                    )
+                }
+
+                if (!mainGroup.contains(stroke.strokeNode!!)) {
+                    mainGroup.add(stroke.strokeNode!!)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
 
         try {
-            val file = File(filePath)
-            fileOutputStream = FileOutputStream(file)
-            println("serializing to: " + file.absoluteFile)
-            Will3Codec.encode(inkModel, fileOutputStream)
-            println("serializing to: " + file.absoluteFile + " | " + file.length())
+            getContentResolver().openFileDescriptor(uri, "w").use { pfd ->
+                FileOutputStream(pfd?.fileDescriptor).use { fileOutputStream ->
+                    Will3Codec.encode(inkModel, fileOutputStream)
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
-        } finally {
-            fileOutputStream?.close()
         }
     }
 
-    fun clear(view: View) {
-        resetInkModel()
+    fun clear(view: View?) {
+        spatialModel = SpatialModel(WillStrokeFactory()) // Initializes the spatial model
+        vectorDrawingView.setSpatialModel(spatialModel)
         vectorDrawingView.clear()
+    }
+
+    fun undo(view: View?) {
+        vectorDrawingView.undo()
+    }
+
+    fun redo(view: View?) {
+        vectorDrawingView.redo()
     }
 
     fun openPaperDialog(view: View) {
@@ -402,31 +457,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun selectFolder(view: View) {
-        val intent = Intent(applicationContext, FolderChooser::class.java)
-        intent.putExtra(
-            Constants.SELECTION_MODE,
-            Constants.SELECTION_MODES.SINGLE_SELECTION.ordinal
-        )
-        startActivityForResult(intent, SELECT_FOLDER_ACTION)
+    fun selectSaveFile(view: View) {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+        intent.setType("*/*")
+        intent.putExtra(Intent.EXTRA_TITLE, "ink.uim");
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        startActivityForResult(intent, CREATE_FILE_ACTION)
     }
 
-    fun openSaveAsDialog(folder: String?) {
-        val inflater = getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
-        val view: View = inflater.inflate(R.layout.filenamedialog, null)
-        val editName: EditText = view.findViewById(R.id.filename_edit)
-        val builder = AlertDialog.Builder(this)
-        with(builder) {
-            setTitle("Add file name")
-            setView(view)
-            setPositiveButton(getString(android.R.string.ok)) { dialog, which ->
-                var name = editName.text.toString()
-                if (!name.endsWith(".uim")) {
-                    name += ".uim"
-                }
-                save(folder + "/" + name)
-            }
-            show()
+    fun openBackground(message: String, blocking: Boolean){
+        background_waiting.setOnTouchListener { _, event ->
+            blocking
         }
+        background_waiting_message.setText(message)
+        background_waiting.visibility = View.VISIBLE
     }
+
+    fun closeBackground() {
+        background_waiting.visibility = View.GONE
+    }
+
+    fun openDeletingMessage() {
+        deleting_msg.startAnimation(anim)
+        delete_background_waiting.visibility = View.VISIBLE
+    }
+
+    fun closeDeletingMessage() {
+        anim.cancel()
+        deleting_msg.animation = null
+        delete_background_waiting.visibility = View.GONE
+    }
+
 }

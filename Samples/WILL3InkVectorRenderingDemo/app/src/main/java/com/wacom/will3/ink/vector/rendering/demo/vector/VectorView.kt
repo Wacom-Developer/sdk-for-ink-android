@@ -4,7 +4,6 @@
  */
 package com.wacom.will3.ink.vector.rendering.demo.vector
 
-import android.app.Activity
 import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
@@ -12,30 +11,29 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.annotation.ColorInt
 import com.wacom.ink.*
-import com.wacom.ink.format.InkSensorType
 import com.wacom.ink.format.enums.InkInputType
+import com.wacom.ink.format.enums.InkSensorMetricType
+import com.wacom.ink.format.enums.InkSensorType
 import com.wacom.ink.format.input.SensorChannel
 import com.wacom.ink.format.tree.data.SensorData
+import com.wacom.ink.format.util.ScalarUnit
 import com.wacom.ink.manipulation.ManipulationMode
 import com.wacom.ink.manipulation.SpatialModel
 import com.wacom.ink.manipulation.callbacks.ErasingCallback
 import com.wacom.ink.manipulation.callbacks.SelectingCallback
+import com.wacom.ink.model.Identifier
 import com.wacom.ink.model.InkStroke
 import com.wacom.ink.model.StrokeAttributes
-import com.wacom.will3.ink.vector.rendering.demo.historicalToPointerData
+import com.wacom.will3.ink.vector.rendering.demo.*
 import com.wacom.will3.ink.vector.rendering.demo.manipulation.SelectionBox
-import com.wacom.will3.ink.vector.rendering.demo.manipulation.UndoManager
-import com.wacom.will3.ink.vector.rendering.demo.resolveToolType
+import com.wacom.will3.ink.vector.rendering.demo.manipulation.HistoryManager
 import com.wacom.will3.ink.vector.rendering.demo.serialization.InkEnvironmentModel
-import com.wacom.will3.ink.vector.rendering.demo.toPointerData
-import com.wacom.will3.ink.vector.rendering.demo.tools.vector.EraserVectorTool
-import com.wacom.will3.ink.vector.rendering.demo.tools.vector.EraserWholeStrokeTool
-import com.wacom.will3.ink.vector.rendering.demo.tools.vector.PenTool
-import com.wacom.will3.ink.vector.rendering.demo.tools.vector.VectorTool
-import com.wacom.will3.ink.vector.rendering.demo.uri
-import kotlinx.android.synthetic.main.activity_main.*
+import com.wacom.will3.ink.vector.rendering.demo.tools.vector.*
 import kotlinx.coroutines.*
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.channels.Channel
+import java.util.*
+import kotlin.collections.ArrayList
+import kotlin.collections.LinkedHashMap
 
 
 /**
@@ -49,6 +47,20 @@ class VectorView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
+    enum class State {
+        DRAWING, ERASING, SELECTING
+    }
+
+    companion object {
+        // when opening the waiting background it should stay for a minimum time,
+        // otherwise it will show a flick effect not very nice. By default we has set this
+        // minimum time to 0.1 seconds.
+        private val BACKGROUND_MINIMUM_TIME = 100L
+
+        // we need to set a maximum number of bitmaps, otherwise we can run out of memory
+        private val MAX_NUMBER_BITMAPS = 5
+    }
+
     // Relevant for serialization
     lateinit var inkEnvironmentModel: InkEnvironmentModel
     lateinit var sensorData: SensorData
@@ -58,36 +70,34 @@ class VectorView @JvmOverloads constructor(
     var inkBuilder = VectorInkBuilder()
     var deleteInkBuilder = VectorInkBuilder()
 
-    private var currentPath =
-        Path() // This will contain the current drawing path before it is finished
-
-    /**
-     * In order to make the strokes look nice and smooth, it is recommended to enable:
-     *  - Antialiasing
-     *  - Dither
-     */
-    val paint = Paint().also {
-        it.isAntiAlias = true
-        it.isDither = true
-    }
+    private var currentPath = Path() // This will contain the current drawing path before it is finished
 
     // Ink Manipulations
-    private var strokes = mutableMapOf<String, WillStroke>() // A list of existing strokes
+    var strokes = mutableMapOf<Identifier, WillStroke>() // A list of existing strokes
     private lateinit var spatialModel: SpatialModel // The spatial model is user for
-    private lateinit var undoManager: UndoManager
+    private lateinit var historyManager: HistoryManager
 
-    val scope = CoroutineScope(newFixedThreadPoolContext(4, "synchronizationPool"))
+    val scope = CoroutineScope(newSingleThreadContext("synchronizationPool"))
     val counterContext = newSingleThreadContext("CounterContext")
 
     private var unprocessedBegin = false
 
-    lateinit var activity: Activity
+    lateinit var activity: MainActivity
     private var currentColor: Int = 0
     var isStylus: Boolean = false
     var newTool = false
-    private var selectedStrokes = arrayListOf<String>() // Ink Manipulations: Selection
+    private var selectedStrokes = arrayListOf<Identifier>() // Ink Manipulations: Selection
 
-    var paintSelected = Paint().also { it.color = Color.BLUE; it.alpha = 100 }
+    val paintSelected = Paint().also {
+        it.isAntiAlias = true
+        it.isFilterBitmap = true
+        it.isDither = true
+        it.color = Color.BLUE
+    }
+
+    val paintSelect = Paint().also {
+        it.color = Color.BLACK
+    }
 
     var selectionBox: SelectionBox? = null
 
@@ -95,110 +105,263 @@ class VectorView @JvmOverloads constructor(
     private var activePointerID: Int = INVALID_POINTER_ID
     private var lastEvent: MotionEvent? = null
 
-    private val defaultScope = CoroutineScope(Dispatchers.Default)
-    private var taskFinished = AtomicBoolean(true)
     private var nextSpline: Spline? = null
 
+    // Because drawing path it is a high time consuming we are going to draw the path to a bitmap
+    // and then draw the bitmap. We use a list of bitmaps instead of only a bitmap
+    // to be able to handle when selection different z-order strokes.
+    private var mBitmapList = arrayListOf<Pair<Bitmap, Boolean>>()
+    private var mCanvas: Canvas? = null
+    private var mBitmapPaint = Paint(Paint.DITHER_FLAG)
+
+    private var mState = State.DRAWING
+    private var mZOrder = 0
+
+    private val channel = Channel<Pair<State, Pair<WillStroke?, Spline?>>>()
+
+    private var numProcess = 0
+    private var initialized = false
+    private var selecting = false
+
+    /**
+     * In order to make the strokes look nice and smooth, it is recommended to enable:
+     *  - Antialiasing
+     *  - Dither
+     */
+    private var mDrawPaint = Paint().also {
+        it.isAntiAlias = true
+        it.isDither = true
+    }
+
+    private var mErasePaint = Paint().also {
+        it.isAntiAlias = true
+        it.isDither = true
+        it.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+    }
+
+    fun createBmps() {
+        try {
+            mBitmapList.forEach { it.first.recycle() }
+            mBitmapList.clear()
+
+            var lastCanvas: Canvas? = null
+            var lastSelectedCanvas: Canvas? = null
+            var numBitmaps = 0
+
+            val list = arrayListOf<Pair<Bitmap, Boolean>>()
+            var selected = false
+            var changed = true
+
+            var selectedWidth = 0
+            var selectedHeight = 0
+            val matrix = Matrix()
+            if (!selectedStrokes.isEmpty()) {
+                val selectedBounds = RectF()
+                for ((key, stroke) in strokes) {
+                    if (selectedStrokes.contains(key)) {
+                        val bounds = RectF()
+                        stroke.path.computeBounds(bounds, true)
+                        selectedBounds.union(bounds)
+                    }
+                }
+                selectedWidth = selectedBounds.width().toInt()
+                selectedHeight = selectedBounds.height().toInt()
+                matrix.postTranslate(-selectedBounds.left, -selectedBounds.top)
+            }
+
+            val sortedStrokes = strokes.values.toList().sortedBy { it.zOrder }
+
+            for (stroke in sortedStrokes) {
+                if (stroke.id in selectedStrokes) {
+                    if (!selected) {
+                        changed = true
+                    }
+                    selected = true
+                } else {
+                    if (selected) {
+                        changed = true
+                    }
+                    selected = false
+                }
+
+                if ((changed) && (numBitmaps <= MAX_NUMBER_BITMAPS)) {
+                    if (selected) {
+                        if (selectedWidth > 0 && selectedHeight > 0) {
+                            val bitmap = Bitmap.createBitmap(
+                                selectedWidth,
+                                selectedHeight,
+                                Bitmap.Config.ARGB_8888
+                            )
+                            list.add(Pair<Bitmap, Boolean>(bitmap, selected))
+                            lastSelectedCanvas = Canvas(bitmap)
+                        }
+                    } else {
+                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        list.add(Pair<Bitmap, Boolean>(bitmap, selected))
+                        lastCanvas = Canvas(bitmap)
+                    }
+                    numBitmaps++
+                }
+
+                if (selected) {
+                    lastSelectedCanvas?.save()
+                    lastSelectedCanvas?.setMatrix(matrix)
+                    lastSelectedCanvas?.drawPath(stroke.path, paintSelected)
+                    lastSelectedCanvas?.restore()
+                } else {
+                    val color = Color.argb(
+                        (stroke.strokeAttributes.alpha * 255).toInt(),
+                        (stroke.strokeAttributes.red * 255).toInt(),
+                        (stroke.strokeAttributes.green * 255).toInt(),
+                        (stroke.strokeAttributes.blue * 255).toInt()
+                    )
+                    mDrawPaint.color = color
+                    lastCanvas?.drawPath(stroke.path, mDrawPaint)
+                }
+
+                changed = false
+            }
+
+            if (list.isEmpty()) {
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                list.add(Pair<Bitmap, Boolean>(bitmap, false))
+                mCanvas = Canvas(bitmap)
+            } else {
+                mCanvas = lastCanvas
+            }
+
+            mBitmapList = list
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        createBmps()
+    }
 
     fun setSpatialModel(spatialModel: SpatialModel) {
         this.spatialModel = spatialModel
-        undoManager = UndoManager(spatialModel)
+        historyManager = HistoryManager()
+
+        if (!initialized) {
+            //CoroutineScope(newSingleThreadContext("erasing")).launch {
+            GlobalScope.launch {
+                processStrokes()
+            }
+        }
+        initialized = true
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        selectionBox?.drawSelectionBox(canvas)
+        val matrix = selectionBox?.getMatrix()
 
-        for ((id, stroke) in strokes) {
-
-            if (id in selectedStrokes) {
-                canvas.drawPath(stroke.path, paintSelected)
+        mBitmapList.forEach {
+            if (it.second) {
+                if (matrix != null) {
+                    canvas.drawBitmap(it.first, matrix!!, paintSelected)
+                }
             } else {
-                // Selection color
-                val color = Color.argb(
-                    (stroke.strokeAttributes.alpha * 255).toInt(),
-                    (stroke.strokeAttributes.red * 255).toInt(),
-                    (stroke.strokeAttributes.green * 255).toInt(),
-                    (stroke.strokeAttributes.blue * 255).toInt()
-                )
-                paint.color = color
-                canvas.drawPath(stroke.path, paint)
+                canvas.drawBitmap(it.first, 0f, 0f, mBitmapPaint)
             }
         }
 
-        // draw the current path,
-        // because we have not finished the stroke we has not saved it yet
-        if (drawingTool.uri() == EraserVectorTool.uri) {
-            paint.color = Color.WHITE
-        } else if (drawingTool.uri() == EraserWholeStrokeTool.uri) {
-            paint.color = Color.RED
-        } else {
-            paint.color = currentColor
+        when (mState) {
+            State.DRAWING -> canvas.drawPath(currentPath, mDrawPaint)
+            State.SELECTING -> canvas.drawPath(currentPath, paintSelect)
         }
 
-        if (drawingTool.uri() != EraserVectorTool.uri) {
-            canvas.drawPath(currentPath, paint)
-        }
+        selectionBox?.drawSelectionBox(canvas)
     }
 
     fun onTouch(event: MotionEvent) {
-        var canDraw = false
-        if (selectionBox != null) {
-            if (!selectionBox!!.onTouch(event)) {
-                if (!selectionBox!!.isChanged()){
-                    strokes = undoManager.undo()!!
+        try {
+            var canDraw = false
+            if (selectionBox != null) {
+                if (!selectionBox!!.onTouch(event)) {
+                    if (!selectionBox!!.isChanged()) {
+                        selectionBox = null
+                        strokes = historyManager.undo(false)!!
+                        spatialModel.reset()
+                        for ((key, value) in strokes) {
+                            spatialModel.add(value)
+                        }
+
+                        selectedStrokes.clear()
+                        createBmps()
+                        updateDrawing()
+                        return
+                    } else {
+                        var newSelectionBox = selectionBox
+                        selectionBox = null
+                        activity.openBackground(activity.getString(R.string.applying_changes), true)
+                        scope.launch {
+                            newSelectionBox!!.applyChanges()
+                            newSelectionBox = null
+                            historyManager.resetRedo();
+                            selectedStrokes.clear()
+                            activity.runOnUiThread(java.lang.Runnable {
+                                createBmps()
+                                updateDrawing()
+                                activity.closeBackground()
+                            })
+                        }
+                        return
+                    }
                 }
-                undoManager.reset()
-                selectionBox = null
-                selectedStrokes.clear()
+            } else {
                 canDraw = true
             }
-        } else {
-            canDraw = true
-        }
 
-        val action = event.actionMasked
-        val pointerIndex = (event.action and MotionEvent.ACTION_POINTER_INDEX_MASK) shr MotionEvent.ACTION_POINTER_INDEX_SHIFT
+            val action = event.actionMasked
+            val pointerIndex =
+                (event.action and MotionEvent.ACTION_POINTER_INDEX_MASK) shr MotionEvent.ACTION_POINTER_INDEX_SHIFT
 
-        if (action == MotionEvent.ACTION_DOWN) {
-            activePointerID = event.getPointerId(pointerIndex)
-        } else if ((activePointerID == INVALID_POINTER_ID) && (action == MotionEvent.ACTION_POINTER_DOWN)) {
-            activePointerID = event.getPointerId(pointerIndex)
-        }
-
-        if (activePointerID == event.getPointerId(pointerIndex)) {
-            if (action == MotionEvent.ACTION_POINTER_UP) {
-                event.action = MotionEvent.ACTION_UP
-            } else if (action == MotionEvent.ACTION_POINTER_DOWN) {
-                event.action = MotionEvent.ACTION_DOWN
+            if (action == MotionEvent.ACTION_DOWN) {
+                activePointerID = event.getPointerId(pointerIndex)
+            } else if ((activePointerID == INVALID_POINTER_ID) && (action == MotionEvent.ACTION_POINTER_DOWN)) {
+                activePointerID = event.getPointerId(pointerIndex)
             }
 
-            // We save the last event just in case we receive a CANCEL action
-            // when we have a CANCEL action we get indeterminate coordinate values,
-            // so in this case we pass the latest value coordinates
-            if ((event.action == MotionEvent.ACTION_DOWN) ||
-                (event.action == MotionEvent.ACTION_MOVE) ||
-                (event.action == MotionEvent.ACTION_UP)
-            ) {
-                lastEvent = MotionEvent.obtain(event)
-            } else if (event.action == MotionEvent.ACTION_CANCEL){
-                lastEvent?.action = MotionEvent.ACTION_UP //we convert the latest event in END event
-            } else {
-                lastEvent = null
-            }
-
-            if (lastEvent != null) {
-                if (canDraw) {
-                    onTouchForDrawing(lastEvent!!)
+            if (activePointerID == event.getPointerId(pointerIndex)) {
+                if (action == MotionEvent.ACTION_POINTER_UP) {
+                    event.action = MotionEvent.ACTION_UP
+                } else if (action == MotionEvent.ACTION_POINTER_DOWN) {
+                    event.action = MotionEvent.ACTION_DOWN
                 }
-            }
 
-            if (event.action == MotionEvent.ACTION_UP) {
-                lastEvent = null
-                activePointerID = INVALID_POINTER_ID
-            }
+                // We save the last event just in case we receive a CANCEL action
+                // when we have a CANCEL action we get indeterminate coordinate values,
+                // so in this case we pass the latest value coordinates
+                if ((event.action == MotionEvent.ACTION_DOWN) ||
+                    (event.action == MotionEvent.ACTION_MOVE) ||
+                    (event.action == MotionEvent.ACTION_UP)
+                ) {
+                    lastEvent = MotionEvent.obtain(event)
+                } else if (event.action == MotionEvent.ACTION_CANCEL) {
+                    lastEvent?.action =
+                        MotionEvent.ACTION_UP //we convert the latest event in END event
+                } else {
+                    lastEvent = null
+                }
 
+                if (lastEvent != null) {
+                    if (canDraw) {
+                        onTouchForDrawing(lastEvent!!)
+                    }
+                }
+
+                if (event.action == MotionEvent.ACTION_UP) {
+                    lastEvent = null
+                    activePointerID = INVALID_POINTER_ID
+                }
+
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -244,7 +407,7 @@ class VectorView @JvmOverloads constructor(
                 }
 
                 for (channel in channelList) {
-                    when (channel.type) {
+                    when (channel.typeURI) {
                         InkSensorType.X -> sensorData.add(channel, pointerData.x)
                         InkSensorType.Y -> sensorData.add(channel, pointerData.y)
                         InkSensorType.TIMESTAMP -> sensorData.addTimestamp(
@@ -271,22 +434,36 @@ class VectorView @JvmOverloads constructor(
             } else if ((drawingTool.drawingMode == VectorTool.DrawingMode.ERASING_WHOLE_STROKE) ||
                 (drawingTool.drawingMode == VectorTool.DrawingMode.ERASING_PARTIAL_STROKE)
             ) {
-                //if (pointerData.phase == Phase.END) {
-                if (inkBuilder.splineProducer.allData != null) {
-                    if (!inkBuilder.splineProducer.allData!!.equals(nextSpline)) {
-                        nextSpline = inkBuilder.splineProducer.allData!!.copy()
-                        if (taskFinished.getAndSet(false)) {
+                activity.openBackground(activity.getString(R.string.deleting), false)
+                if (pointerData.phase == Phase.END) {
+                    if (inkBuilder.splineProducer.allData != null) {
+                        if (!inkBuilder.splineProducer.allData!!.equals(nextSpline)) {
+                            nextSpline = inkBuilder.splineProducer.allData!!.copy()
+                            numProcess++
                             scope.launch {
-                                removeStroke(nextSpline!!)
+                                channel.send(
+                                    Pair<State, Pair<WillStroke?, Spline?>>(
+                                        State.ERASING,
+                                        Pair(null, nextSpline)
+                                    )
+                                )
                             }
                         }
                     }
-                    //}
                 }
             } else {
                 // Assume we are selecting
                 if (pointerData.phase == Phase.END) {
-                    selectStroke(inkBuilder.splineProducer.allData!!.copy())
+                    if (!selecting) {
+                        scope.launch {
+                            channel.send(
+                                Pair<State, Pair<WillStroke?, Spline?>>(
+                                    State.SELECTING,
+                                    Pair(null, inkBuilder.splineProducer.allData!!.copy())
+                                )
+                            )
+                        }
+                    }
                 }
             }
 
@@ -299,16 +476,19 @@ class VectorView @JvmOverloads constructor(
             unprocessedBegin = false
             if (path != null) {
                 currentPath.addPath(path)
+                if (mState == State.ERASING) {
+                        mCanvas?.drawPath(path, mErasePaint)
+                }
             }
 
             if (pointerData.phase == Phase.END) {
+                if (mState == State.DRAWING) {
+                    mCanvas?.drawPath(currentPath, mDrawPaint)
+                }
                 currentPath = Path()
             }
 
-            //if (drawingTool.drawingMode != VectorTool.DrawingMode.ERASING_WHOLE_STROKE) {
-            if (taskFinished.get()) {
-                invalidate()
-            }
+            updateDrawing()
 
         } else if (pointerData.phase == Phase.BEGIN) {
             unprocessedBegin = true
@@ -318,7 +498,7 @@ class VectorView @JvmOverloads constructor(
 
     private fun addStroke(event: MotionEvent) {
         val brush = inkBuilder.tool.brush
-        val stroke = WillStroke(inkBuilder.splineProducer.allData!!.copy(), brush)
+        val stroke = WillStroke(inkBuilder.splineProducer.allData!!.copy(), brush, mZOrder++)
         stroke.sensorData = sensorData
 
         stroke.strokeAttributes = object : StrokeAttributes {
@@ -333,77 +513,109 @@ class VectorView @JvmOverloads constructor(
             override var offsetY: Float = 0.0f
             override var offsetZ: Float = 0.0f
 
-            override var red: Float = Color.red(paint.color) / 255f
-            override var green: Float = Color.green(paint.color) / 255f
-            override var blue: Float = Color.blue(paint.color) / 255f
-            override var alpha: Float = paint.alpha.toFloat() / 255
+            override var red: Float = Color.red(mDrawPaint.color) / 255f
+            override var green: Float = Color.green(mDrawPaint.color) / 255f
+            override var blue: Float = Color.blue(mDrawPaint.color) / 255f
+            override var alpha: Float = mDrawPaint.alpha.toFloat() / 255
         }
 
-        spatialModel.add(stroke)
+        scope.launch {
+            channel.send(Pair<State, Pair<WillStroke?, Spline?>>(State.DRAWING, Pair(stroke, null)))
+        }
+        //spatialModel.add(stroke)
         stroke.path = currentPath
         strokes[stroke.id] = stroke
+
+        val copy = mutableListOf<WillStroke>()
+        for ((key, value) in strokes) {
+            copy.add(value)
+        }
+
+        historyManager.addStrokes(copy)
     }
 
     suspend fun removeStroke(spline: Spline) {
-        //runBlocking {
-        //withContext(Dispatchers.Default) {
-        //runBlocking {
-        val removed = arrayListOf<String>()
-        spatialModel.erase(
-            spline,
-            drawingTool.brush,
-            if (drawingTool.drawingMode == VectorTool.DrawingMode.ERASING_PARTIAL_STROKE)
-                ManipulationMode.PARTIAL_STROKE else ManipulationMode.WHOLE_STROKE,
-            object : ErasingCallback {
-                override fun onStrokeAdded(stroke: InkStroke) {
-                    deleteBuildStroke(stroke as WillStroke)
-                    for (id in removed) strokes.remove(id)
+        withContext(counterContext) {
+            val time = System.currentTimeMillis()
+            runBlocking {
+                val removed = arrayListOf<Identifier>()
+                spatialModel.erase(
+                    spline,
+                    drawingTool.brush,
+                    if (drawingTool.drawingMode == VectorTool.DrawingMode.ERASING_PARTIAL_STROKE)
+                        ManipulationMode.PARTIAL_STROKE else ManipulationMode.WHOLE_STROKE,
+                    object : ErasingCallback {
+                        override fun onStrokeAdded(stroke: InkStroke) {
+                            deleteBuildStroke(stroke as WillStroke)
+                            for (id in removed) strokes.remove(id)
+                        }
+
+                        override fun onStrokeRemoved(id: Identifier) {
+                            val removedStroke = strokes.remove(id)
+                            if (removedStroke == null) {
+                                removed.add(id)
+                            }
+                        }
+                    }
+                )
+
+                val copy = mutableListOf<WillStroke>()
+                for ((key, value) in strokes) {
+                    copy.add(value)
                 }
 
-                override fun onStrokeRemoved(id: String) {
-                    val removedStroke = strokes.remove(id)
-                    if (removedStroke == null) {
-                        removed.add(id)
+                historyManager.addStrokes(copy)
+            }
+            numProcess--
+            if (numProcess == 0) {
+                createBmps()
+                updateDrawing()
+                val wait = System.currentTimeMillis() - time
+                if (wait < BACKGROUND_MINIMUM_TIME) {
+                    Timer().schedule(object : TimerTask() {
+                        override fun run() {
+                            activity.runOnUiThread {
+                                activity.closeBackground()
+                            }
+                        }
+                    }, BACKGROUND_MINIMUM_TIME - wait)
+                } else {
+                    activity.runOnUiThread {
+                        activity.closeBackground()
                     }
                 }
             }
-        )
-        invalidate()
-        taskFinished.set(true)
-        //}
-        //}
-        //}
+        }
     }
 
-    fun selectStroke(spline: Spline) {
-        runBlocking {
-            withContext(counterContext) {
-                val removed = arrayListOf<String>()
-                undoManager.addStrokes(strokes) // add the current stroke list in case we want to go back to its state
+    suspend fun selectStroke(spline: Spline) {
+        withContext(counterContext) {
+            val time = System.currentTimeMillis()
+            runBlocking {
+                activity.runOnUiThread {
+                    activity.openBackground(activity.getString(R.string.selecting_strokes), true)
+                }
+
+                val removed = arrayListOf<Identifier>()
+                //undoManager.addStrokes(strokes) // add the current stroke list in case we want to go back to its state
 
                 spatialModel.select(spline,
                     if (drawingTool.drawingMode == VectorTool.DrawingMode.SELECTING_PARTIAL_STROKE)
                         ManipulationMode.PARTIAL_STROKE else ManipulationMode.WHOLE_STROKE,
                     object : SelectingCallback {
                         override fun onStrokeAdded(stroke: InkStroke) {
-                            undoManager.addStroke(stroke.id)
-                            buildStroke(stroke as WillStroke)
+                            buildStroke(stroke as WillStroke, null)
                             for (id in removed) strokes.remove(id)
                         }
 
-                        override fun onStrokeRemoved(id: String) {
+                        override fun onStrokeRemoved(id: Identifier) {
                             val removedStroke = strokes.remove(id)
                             if (removedStroke == null) {
                                 removed.add(id)
-                            } else {
-                                undoManager.removeStroke(removedStroke)
-                            }
-                            activity.runOnUiThread() {
-                                invalidate()
                             }
                         }
 
-                        override fun onStrokeSelected(id: String) {
+                        override fun onStrokeSelected(id: Identifier) {
                             selectedStrokes.add(id)
                             selectionBox =
                                 SelectionBox(
@@ -416,10 +628,30 @@ class VectorView @JvmOverloads constructor(
                     }
                 )
 
-                //activity.runOnUiThread() {
-                invalidate()
-                //}
+                val copy = mutableListOf<WillStroke>()
+                for ((key, value) in strokes) {
+                    copy.add(value)
+                }
+
+                historyManager.addStrokes(copy, false)
             }
+            createBmps()
+            updateDrawing()
+            val wait = System.currentTimeMillis() - time
+            if (wait < BACKGROUND_MINIMUM_TIME) {
+                Timer().schedule(object : TimerTask() {
+                    override fun run() {
+                        activity.runOnUiThread {
+                            activity.closeBackground()
+                        }
+                    }
+                }, BACKGROUND_MINIMUM_TIME - wait)
+            } else {
+                activity.runOnUiThread {
+                    activity.closeBackground()
+                }
+            }
+            selecting = false
         }
     }
 
@@ -430,10 +662,27 @@ class VectorView @JvmOverloads constructor(
         deleteInkBuilder.updatePipeline(tool)
         selectedStrokes.clear()
         setColor(currentColor)
+
+        if ((drawingTool.uri() == EraserVectorTool.uri) ||
+            (drawingTool.uri() == EraserWholeStrokeTool.uri)
+        ) {
+            mState = State.ERASING
+        } else if ((drawingTool.uri() == SelectorPartialStrokeTool.uri) ||
+            (drawingTool.uri() == SelectorWholeStrokeTool.uri)
+        ) {
+            mState = State.SELECTING
+        } else {
+            mState = State.DRAWING
+        }
+
+        mDrawPaint.color = currentColor
     }
 
     fun setColor(color: Int) {
         currentColor = adjustAlpha(color, drawingTool.alphaValue)
+        if (mState == State.DRAWING) {
+            mDrawPaint.color = currentColor
+        }
     }
 
     fun adjustAlpha(@ColorInt color: Int, alphaValue: Float): Int {
@@ -446,17 +695,61 @@ class VectorView @JvmOverloads constructor(
     }
 
     fun clear() {
-        spatialModel.reset()
         currentPath = Path()
         strokes.clear()
         selectedStrokes.clear()
-        invalidate()
+        selectionBox = null
+        setZOrder(0)
+        createBmps()
+        updateDrawing()
+    }
+
+    fun undo() {
+        if (selectionBox == null) {
+            strokes = historyManager?.undo()!!
+            spatialModel.reset()
+            for ((key, value) in strokes) {
+                spatialModel.add(value)
+            }
+            createBmps()
+            updateDrawing()
+        }
+    }
+
+    fun redo() {
+        if (selectionBox == null) {
+            strokes = historyManager?.redo()!!
+            spatialModel.reset()
+            for ((key, value) in strokes) {
+                spatialModel.add(value)
+            }
+            createBmps()
+            updateDrawing()
+        }
     }
 
 
-    fun buildStroke(stroke: WillStroke) {
+    fun buildStroke(stroke: WillStroke, channelList: List<SensorChannel>?) {
         // add the attributes
         addRequiredValuesToPath(stroke)
+
+        // scale values
+        /*if (channelList != null) {
+            // get the default resolution for the current screen
+            val sensorChannel = SensorChannel(
+                InkSensorType.X,
+                InkSensorMetricType.LENGTH,
+                ScalarUnit.INCH,
+                0.0f,
+                0f,
+                2
+            )
+            scaleValues(stroke, channelList, sensorChannel.resolution)
+        }*/
+
+        /*if (stroke.sensorData != null) {
+            stroke.sensorData = inkEnvironmentModel.createSensorData(stroke.sensorData!!)
+        }*/
 
         val (path, _) = inkBuilder.buildPath(stroke.spline, null, true, true)
         if (path != null) {
@@ -557,6 +850,50 @@ class VectorView @JvmOverloads constructor(
 
             stroke.spline.path = newPath
             stroke.spline.layout = newLayout
+        }
+    }
+
+    fun scaleValues(stroke: WillStroke, channelList: List<SensorChannel>, resolution: Double) {
+        var resX = 0.0
+        var resY = 0.0
+        for (channel in channelList) {
+            when (channel.typeURI) {
+                InkSensorType.X -> resX = channel.resolution
+                InkSensorType.Y -> resY = channel.resolution
+            }
+        }
+
+        if ((resX > 0) && (resY > 0)) {
+            var scaleFactor = Math.min(resolution / resX, resolution / resY).toFloat()
+            if (scaleFactor != 1f) {
+                stroke.spline.transform(scaleFactor, scaleFactor, scaleFactor, 0f, 0f, 0f, 0f, 0f)
+            }
+        }
+    }
+
+    fun updateDrawing() {
+        activity.runOnUiThread { invalidate() }
+    }
+
+    fun setZOrder(value: Int) {
+        mZOrder = value
+    }
+
+    suspend fun processStrokes() {
+        while (true) {
+            try {
+                runBlocking {
+                    //always waiting for inputs to process
+                    val operation = channel.receive()
+                    when (operation.first) {
+                        State.ERASING -> removeStroke(operation.second.second!!)
+                        State.DRAWING -> spatialModel.add(operation.second.first!!)
+                        State.SELECTING -> selectStroke(operation.second.second!!)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 

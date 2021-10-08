@@ -2,11 +2,14 @@
 <resources>
     <color name="colorPrimary">#008577</color>
     <color name="colorPrimaryDark">#00574B</color>
-    <color name="colorAccent">#D81B60</color>
+    <color name="colorAccent">#008577</color>
 
     <color name="navbar_bg_color">#363636</color>
 
     <color name="selection_background">#80808080</color>
     <color name="selection_control_point">#FFFFAF00</color>
+    <color name="rotation_control_point">#008577</color>
     <color name="selection_control_point_border">#FF646464</color>
+
+    <color name="background_dim">#59000000</color>
 </resources>

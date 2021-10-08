@@ -4,4 +4,5 @@
     <string name="sdk_name">WILL SDK for ink (Android)</string>
     <string name="sdk_version">v3.0.0</string>
     <string name="raster_eraser">Raster eraser</string>
+    <string name="loading">Loading...</string>
 </resources>

@@ -5,27 +5,28 @@
 package com.wacom.will3.ink.raster.rendering.demo.raster
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.PixelFormat
+import android.graphics.SurfaceTexture
 import android.util.AttributeSet
 import android.view.MotionEvent
-import android.view.SurfaceHolder
-import android.view.SurfaceView
+import android.view.TextureView
 import com.wacom.ink.InterpolatedSpline
 import com.wacom.ink.Phase
 import com.wacom.ink.StrokeConstants
 import com.wacom.ink.egl.EGLRenderingContext
-import com.wacom.ink.format.InkSensorType
 import com.wacom.ink.format.enums.InkInputType
 import com.wacom.ink.format.enums.InkSensorMetricType
-import com.wacom.ink.format.input.*
+import com.wacom.ink.format.enums.InkSensorType
+import com.wacom.ink.format.input.SensorChannel
 import com.wacom.ink.format.rendering.PathPointProperties
 import com.wacom.ink.format.rendering.RasterBrush
 import com.wacom.ink.format.rendering.Style
 import com.wacom.ink.format.tree.data.SensorData
 import com.wacom.ink.format.tree.data.Stroke
 import com.wacom.ink.format.tree.nodes.StrokeNode
-import com.wacom.ink.model.IdentifiableImpl
+import com.wacom.ink.format.util.ScalarUnit
+import com.wacom.ink.model.Identifier
 import com.wacom.ink.rasterization.InkCanvas
 import com.wacom.ink.rasterization.Layer
 import com.wacom.ink.rasterization.StrokeRenderer
@@ -36,6 +37,7 @@ import com.wacom.will3.ink.raster.rendering.demo.tools.raster.EraserRasterTool
 import com.wacom.will3.ink.raster.rendering.demo.tools.raster.PencilTool
 import com.wacom.will3.ink.raster.rendering.demo.tools.raster.RasterTool
 
+
 /**
  * This is a surface for drawing raster inking.
  * Extends from SurfaceView
@@ -44,7 +46,7 @@ class RasterView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : SurfaceView(context, attrs, defStyleAttr) {
+) : TextureView(context, attrs, defStyleAttr) {
 
     interface InkingSurfaceListener {
         fun onSurfaceCreated()
@@ -75,13 +77,13 @@ class RasterView @JvmOverloads constructor(
 
     init {
         rasterInkBuilder.updatePipeline(PencilTool(context))
-        setZOrderOnTop(true);
-        holder.setFormat(PixelFormat.TRANSPARENT);
+        isOpaque = false
 
         // the drawing is going to be performer on background
         // on a surface, so we initialize the surface
-        holder.addCallback(object : SurfaceHolder.Callback {
-            override fun surfaceChanged(holder: SurfaceHolder?, format: Int, w: Int, h: Int) {
+        surfaceTextureListener = object: SurfaceTextureListener {
+
+            override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, w: Int, h: Int) {
                 // here, once the surface is crated, we are going to initialize ink canvas
 
                 // firs we check that there is no other inkCanvas, in case there is we dispose it
@@ -90,7 +92,10 @@ class RasterView @JvmOverloads constructor(
                 }
 
                 inkCanvas =
-                    InkCanvas(holder, EGLRenderingContext.EGLConfiguration(8, 8, 8, 8, 8, 8))
+                    InkCanvas(
+                        surfaceTexture,
+                        EGLRenderingContext.EGLConfiguration(8, 8, 8, 8, 8, 8)
+                    )
                 viewLayer = inkCanvas!!.createViewLayer(w, h)
                 strokesLayer = inkCanvas!!.createLayer(w, h)
                 currentFrameLayer = inkCanvas!!.createLayer(w, h)
@@ -109,15 +114,21 @@ class RasterView @JvmOverloads constructor(
 
             }
 
-            override fun surfaceDestroyed(holder: SurfaceHolder?) {
+            override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, w: Int, h: Int) {
+                // Ignored, Camera does all the work for us
+            }
+
+            override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
                 releaseResources();
+                return true
             }
 
-            override fun surfaceCreated(p0: SurfaceHolder?) {
-                //we don't have to do anything here
+            override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {
+                // Invoked every time there's a new Camera preview frame.
             }
 
-        })
+
+        }
 
     }
 
@@ -155,7 +166,7 @@ class RasterView @JvmOverloads constructor(
         }
 
         for (channel in channelList) {
-            when (channel.type) {
+            when (channel.typeURI) {
                 InkSensorType.X -> sensorData.add(channel, pointerData.x)
                 InkSensorType.Y -> sensorData.add(channel, pointerData.y)
                 InkSensorType.TIMESTAMP -> sensorData.addTimestamp(
@@ -196,13 +207,13 @@ class RasterView @JvmOverloads constructor(
         )
         // Adding stroke to the Stroke Repository
         val path = Stroke(
-            IdentifiableImpl.generateUUID(),                    // Generated UUID
+            Identifier(),                    // Generated UUID
             rasterInkBuilder.splineProducer.allData!!.copy(),   // Spline
             style                                               // Style
         )
 
         // Adding a node to the Ink tree
-        val node = StrokeNode(IdentifiableImpl.generateUUID(), path)
+        val node = StrokeNode(path)
         node.data.sensorDataID = sensorData.id
         node.data.sensorDataOffset = 0
         strokeNodeList.add(Pair(node, rasterTool.brush))
@@ -282,11 +293,11 @@ class RasterView @JvmOverloads constructor(
 
     fun drawStrokes(strokeList: MutableList<Pair<StrokeNode, RasterBrush>>) {
         for (stroke in strokeList) {
-            drawStroke(stroke.first, stroke.second)
+            drawStroke(stroke.first, stroke.second, null)
         }
     }
 
-    fun drawStroke(stroke: StrokeNode, brush: RasterBrush) {
+    fun drawStroke(stroke: StrokeNode, brush: RasterBrush, sensorChannelList: List<SensorChannel>?) {
         val style = stroke.data.style
         val renderModeUri = stroke.data.style?.renderModeUri ?: ""
         var renderMode = BlendMode.values().find { it.uri() == renderModeUri } ?: BlendMode.SOURCE_OVER
@@ -295,6 +306,19 @@ class RasterView @JvmOverloads constructor(
         defaults.green = style?.props?.green ?: 0f
         defaults.blue = style?.props?.blue ?: 0f
         defaults.alpha = style?.props?.alpha ?: 1f
+
+        /*if (sensorChannelList != null) {
+            // get the default resolution for the current screen
+            val sensorChannel = SensorChannel(
+                InkSensorType.X,
+                InkSensorMetricType.LENGTH,
+                ScalarUnit.INCH,
+                0.0f,
+                0f,
+                2
+            )
+            scaleValues(stroke, sensorChannelList, sensorChannel.resolution)
+        }*/
 
         val spline = stroke.data.spline
         val (added, _) = rasterInkBuilder.processSpline(spline, null)
@@ -322,4 +346,33 @@ class RasterView @JvmOverloads constructor(
         }
     }
 
+    fun scaleValues(stroke: StrokeNode, channelList: List<SensorChannel>, resolution: Double) {
+        var resX = 0.0
+        var resY = 0.0
+        for (channel in channelList) {
+            when (channel.typeURI) {
+                InkSensorType.X -> resX = channel.resolution
+                InkSensorType.Y -> resY = channel.resolution
+            }
+        }
+
+        if ((resX > 0) && (resY > 0)) {
+            var scaleFactor = Math.min(resolution / resX, resolution / resY).toFloat()
+            if (scaleFactor != 1f) {
+                stroke.data.spline.transform(scaleFactor, scaleFactor, scaleFactor, 0f, 0f, 0f, 0f, 0f)
+            }
+        }
+    }
+
+    fun toBitmap(backgroundColor: Int): Bitmap {
+        val bitmap = Bitmap.createBitmap(this.width, this.height, Bitmap.Config.ARGB_8888)
+        inkCanvas!!.setTarget(currentFrameLayer);
+        inkCanvas!!.clearColor(backgroundColor);
+        inkCanvas!!.drawLayer(strokesLayer, BlendMode.SOURCE_OVER);
+
+        inkCanvas!!.invalidate();
+        inkCanvas!!.readPixels(currentFrameLayer, bitmap, 0, 0, 0, 0, bitmap.width, bitmap.height);
+
+        return bitmap
+    }
 }

@@ -7,34 +7,47 @@ package com.wacom.will3.ink.vector.rendering.demo.manipulation
 import android.graphics.*
 import android.util.TypedValue
 import android.view.MotionEvent
-import android.view.View
 import com.wacom.ink.manipulation.SpatialModel
+import com.wacom.ink.model.Identifier
 import com.wacom.will3.ink.vector.rendering.demo.R
 import com.wacom.will3.ink.vector.rendering.demo.createVectorTool
 import com.wacom.will3.ink.vector.rendering.demo.vector.VectorInkBuilder
+import com.wacom.will3.ink.vector.rendering.demo.vector.VectorView
 import com.wacom.will3.ink.vector.rendering.demo.vector.WillStroke
-import kotlin.math.PI
-import kotlin.math.atan2
-import kotlin.math.pow
-import kotlin.math.sqrt
+import kotlin.math.sin
+
 
 class SelectionBox(
-    val view: View,
-    val strokes: Map<String, WillStroke>,
-    val selectedList: List<String>,
-    val spatialModel: SpatialModel
-) {
+    val view: VectorView,
+    val strokes: Map<Identifier, WillStroke>,
+    val selectedList: List<Identifier>,
+    val spatialModel: SpatialModel) {
 
-    private enum class ControlPoint {
-        CORNER_LEFT_UP, MIDDLE_UP, CORNER_RIGHT_UP, MIDDLE_RIGHT, CORNER_RIGHT_DOWN, MIDDLE_DOWN, CORNER_LEFT_DOWN, MIDDLE_LEFT
+    enum class ControlPoint {
+        CORNER_LEFT_UP, MIDDLE_UP, CORNER_RIGHT_UP, MIDDLE_RIGHT, CORNER_RIGHT_DOWN, MIDDLE_DOWN, CORNER_LEFT_DOWN, MIDDLE_LEFT, ROTATION_POINT
     }
 
-    private var left = 0f
-    private var top = 0f
-    private var right = 0f
-    private var bottom = 0f
-    private var middle_x = 0f
-    private var middle_y = 0f
+    companion object {
+        private val ROTATION_POINT_OFFSET = 30f //dp
+    }
+
+    private val rotationPointOffsetPixels = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        ROTATION_POINT_OFFSET,
+        view.activity.resources.displayMetrics
+    )
+
+    private val radius = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        7.5f,
+        view.context.resources.displayMetrics
+    )
+
+    private val tolerance = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        10f,
+        view.context.resources.displayMetrics
+    )
 
     private var editing = false
     private var firstPoint = PointF(0f, 0f)
@@ -44,44 +57,96 @@ class SelectionBox(
     private var originalBounds = RectF()
     private var newBounds = RectF()
 
-    //--  This is for manipulate selecting strokes with two fingers
-    var originX = Float.NaN
-    var originY = Float.NaN
-
-    var totalTransformationAngle = 0.0f
-    var totalTransformationScale = 1.0f
-
-    private var lastX1 = 0.0f
-    private var lastX2 = 0.0f
-    private var lastY1 = 0.0f
-    private var lastY2 = 0.0f
-
-    private var pivotPointX = 0.0f
-    private var pivotPointY = 0.0f
-
-    var transformMultipoint = false
-
-    val originalPaths = HashMap<String, Path>()
-    //-- end manipulate variables
-
-    var changed = false
+    private var mAngle = 0f
+    private val mStartVector = PointF()
+    private var mStartAngle = 0f
+    private var mBitmap: Bitmap? = null
 
     init {
         originalBounds = getBounds()
-        updateSelectionBox()
+        newBounds = RectF(originalBounds.left, originalBounds.top, originalBounds.right, originalBounds.bottom)
+
+        mBitmap = Bitmap.createBitmap(originalBounds.width().toInt(), originalBounds.height().toInt(), Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(mBitmap!!)
+        var paint = Paint(Paint.DITHER_FLAG).also {
+            it.color = Color.BLUE
+            it.style = Paint.Style.FILL
+        }
+        val matrix = Matrix()
+        matrix.preTranslate(-originalBounds.left, -originalBounds.top)
+        canvas.setMatrix(matrix)
+        for ((id, stroke) in strokes) {
+            if (selectedList.contains(id)) {
+                canvas.drawPath(stroke.path, paint)
+            }
+        }
     }
 
+    //--- Public methods ---
+
+    /**
+     * Indicates if there has been some transformation on the selected strokes
+     */
+    fun isChanged(): Boolean {
+        val scaleX = newBounds.width() / originalBounds.width()
+        val scaleY = newBounds.height() / originalBounds.height()
+        val offsetX = newBounds.centerX() - originalBounds.centerX()
+        val offsetY = newBounds.centerY() - originalBounds.centerY()
+        if (scaleX != 1f || scaleY != 1f || offsetX != 0f || offsetY != 0f || mAngle != 0f) {
+            return true
+        }
+
+        return false
+    }
+
+    /**
+     * Apply the changes to the selected strokes
+     */
+    fun applyChanges() {
+        var scaleX = newBounds.width() / originalBounds.width()
+        var scaleY = newBounds.height() / originalBounds.height()
+        val offsetX = newBounds.centerX() - originalBounds.centerX()
+        val offsetY = newBounds.centerY() - originalBounds.centerY()
+
+        for (id in selectedList) {
+            val stroke = strokes[id]!!
+            spatialModel.remove(stroke.id)
+            stroke.spline.transform(scaleX, scaleY, (scaleX+scaleY)/2, offsetX, offsetY, mAngle, originalBounds.centerX(), originalBounds.centerY())
+            spatialModel.add(stroke)
+
+            var transformInkBuilder = VectorInkBuilder()
+            transformInkBuilder.updatePipeline(stroke.createStyle().createVectorTool())
+            val (path1, _) = transformInkBuilder.buildPath(stroke.spline, null, true, true)
+
+            if (path1 != null) {
+                stroke.path = path1
+            }
+        }
+    }
+
+    /**
+     * Handles onTouch event
+     */
     fun onTouch(event: MotionEvent): Boolean {
-        //using multitouch we can move, rotate and scale the selected strokes
-        if (event.pointerCount > 1) {
-            transformMultipoint = true
-            onTouchForTransform(event)
-        } else if (event.action == MotionEvent.ACTION_DOWN) {
+        val matrix = Matrix()
+        matrix.postRotate(-mAngle, newBounds.centerX(), newBounds.centerY())
+
+        val tEvent = MotionEvent.obtain(event)
+        tEvent.transform(matrix)
+
+        if (event.action == MotionEvent.ACTION_DOWN) {
             firstPoint.x = event.x
             firstPoint.y = event.y
-            controlPoint = getControlPoint(event.x, event.y)
-            if ((controlPoint != null) || (isInside(event.x, event.y))) {
+            controlPoint = getControlPoint(tEvent.x, tEvent.y)
+            if ((controlPoint != null) || (isInside(tEvent.x, tEvent.y))) {
                 editing = true
+
+                if (controlPoint == ControlPoint.ROTATION_POINT) {
+                    mStartVector.x = event.x - newBounds.centerX()
+                    mStartVector.y = event.y - newBounds.centerY()
+                    mStartAngle = mAngle
+                }
+
             } else {
                 editing = false
             }
@@ -90,41 +155,20 @@ class SelectionBox(
         } else if (editing) {
             if (event.action == MotionEvent.ACTION_MOVE) {
                 if (controlPoint != null) {
-                    val intermediateBounds = getBounds()
-                    when (controlPoint) {
-                        ControlPoint.CORNER_LEFT_UP -> {
-                            intermediateBounds.left += (event.x - lastPoint.x).toInt()
-                            intermediateBounds.top += (event.y - lastPoint.y).toInt()
-                        }
-                        ControlPoint.MIDDLE_UP -> {
-                            intermediateBounds.top += (event.y - lastPoint.y).toInt()
-                        }
-                        ControlPoint.CORNER_RIGHT_UP -> {
-                            intermediateBounds.right += (event.x - lastPoint.x).toInt()
-                            intermediateBounds.top += (event.y - lastPoint.y).toInt()
-                        }
-                        ControlPoint.MIDDLE_RIGHT -> {
-                            intermediateBounds.right += (event.x - lastPoint.x).toInt()
-                        }
-                        ControlPoint.CORNER_RIGHT_DOWN -> {
-                            intermediateBounds.right += (event.x - lastPoint.x).toInt()
-                            intermediateBounds.bottom += (event.y - lastPoint.y).toInt()
-                        }
-                        ControlPoint.MIDDLE_DOWN -> {
-                            intermediateBounds.bottom += (event.y - lastPoint.y).toInt()
-                        }
-                        ControlPoint.CORNER_LEFT_DOWN -> {
-                            intermediateBounds.left += (event.x - lastPoint.x).toInt()
-                            intermediateBounds.bottom += (event.y - lastPoint.y).toInt()
-                        }
-                        ControlPoint.MIDDLE_LEFT -> {
-                            intermediateBounds.left += (event.x - lastPoint.x).toInt()
-                        }
+                    if (controlPoint == ControlPoint.ROTATION_POINT) {
+                        val angle = Utils.getAngle(mStartVector, PointF(event.x - newBounds.centerX(), event.y - newBounds.centerY()))
+                        rotateSelectedStrokes(angle, mStartAngle)
+                    } else {
+                        val deltaX = event.x - lastPoint.x
+                        val deltaY = event.y - lastPoint.y
+                        val alpha = kotlin.math.atan2(deltaY, deltaX)
+                        val deltaL = Utils.getLength(deltaX, deltaY)
+                        resizeSelectedStrokes(deltaL, alpha, controlPoint!!)
+
+                        lastPoint.x = event.x
+                        lastPoint.y = event.y
                     }
-                    lastPoint.x = event.x
-                    lastPoint.y = event.y
-                    scaleSelectedStrokes(intermediateBounds)
-                } else if (isInside(event.x, event.y)) {
+                } else if (isInside(tEvent.x, tEvent.y)) {
                     movingPoint.x = event.x - lastPoint.x
                     movingPoint.y = event.y - lastPoint.y
                     lastPoint.x = event.x
@@ -133,43 +177,183 @@ class SelectionBox(
                     //move the selection
                     moveSelectedStrokes()
                 }
-            } else if (event.action == MotionEvent.ACTION_UP) {
-                if (transformMultipoint) {
-                    transformMultipoint = false
-                    transformSelection(
-                        totalTransformationScale,
-                        totalTransformationScale,
-                        totalTransformationScale,
-                        0f,
-                        0f,
-                        totalTransformationAngle,
-                        pivotPointX,
-                        pivotPointY
-                    )
-
-                    totalTransformationAngle = 0.0f
-                    totalTransformationScale = 1.0f
-
-                    originX = Float.NaN
-                    originY = Float.NaN
-                } else {
-                    transformSelection(
-                        scaleX = newBounds.width() / originalBounds.width(),
-                        scaleY = newBounds.height() / originalBounds.height(),
-                        translateX = newBounds.left - originalBounds.left,
-                        translateY = newBounds.top - originalBounds.top,
-                        pivotX = originalBounds.left,
-                        pivotY = originalBounds.top
-                    )
-                }
-                originalBounds = getBounds()
-                updateSelectionBox()
             }
         }
+
+        if (editing) {
+            view.updateDrawing()
+        }
+
         return editing
     }
 
-    fun getBounds(): RectF {
+    fun getMatrix(): Matrix {
+        val scaleX = newBounds.width() / originalBounds.width()
+        val scaleY = newBounds.height() / originalBounds.height()
+
+        val m = Matrix()
+        m.postTranslate(newBounds.left, newBounds.top)
+        m.postScale(scaleX, scaleY, newBounds.left, newBounds.top)
+        m.postRotate(mAngle, newBounds.centerX(), newBounds.centerY())
+        return m
+    }
+
+    //--- Draw section ----
+
+    /**
+     * Draw the selection box and return a transformation matrix with the transformations
+     * that needs to be apply to the selected strokes path
+     */
+    fun drawSelectionBox(canvas: Canvas) {
+        val matrix = Matrix()
+        matrix.postRotate(mAngle, newBounds.centerX(), newBounds.centerY())
+        canvas.save()
+        canvas.setMatrix(matrix)
+        drawSelectionBoxInternal(canvas)
+        canvas.restore()
+    }
+
+    private fun drawSelectionBoxInternal(canvas: Canvas) {
+        val paint = Paint()
+        paint.color = view.context.resources.getColor(R.color.selection_background)
+
+        paint.style = Paint.Style.FILL
+        canvas.drawRect(newBounds, paint)
+
+        paint.color = Color.BLACK
+        paint.strokeWidth = 2f
+
+        canvas.drawLine(
+            newBounds.centerX(),
+            newBounds.top,
+            newBounds.centerX(),
+            newBounds.top - rotationPointOffsetPixels,
+            paint
+        )
+
+        paint.color = view.context.resources.getColor(R.color.rotation_control_point)
+        canvas.drawCircle(newBounds.centerX(), newBounds.top - rotationPointOffsetPixels, radius, paint)
+
+        // Control point fill color
+        paint.color = view.context.resources.getColor(R.color.selection_control_point)
+        canvas.drawCircle(newBounds.left, newBounds.bottom, radius, paint)
+        canvas.drawCircle(newBounds.left, newBounds.top, radius, paint)
+        canvas.drawCircle(newBounds.right, newBounds.top, radius, paint)
+        canvas.drawCircle(newBounds.right, newBounds.bottom, radius, paint)
+        canvas.drawCircle(newBounds.left, newBounds.centerY(), radius, paint)
+        canvas.drawCircle(newBounds.centerX(), newBounds.top, radius, paint)
+        canvas.drawCircle(newBounds.right, newBounds.centerY(), radius, paint)
+        canvas.drawCircle(newBounds.centerX(), newBounds.bottom, radius, paint)
+
+        // Control point border
+        paint.color = view.context.resources.getColor(R.color.selection_control_point_border)
+        paint.style = Paint.Style.STROKE
+        canvas.drawCircle(newBounds.left, newBounds.bottom, radius, paint)
+        canvas.drawCircle(newBounds.left, newBounds.top, radius, paint)
+        canvas.drawCircle(newBounds.right, newBounds.top, radius, paint)
+        canvas.drawCircle(newBounds.right, newBounds.bottom, radius, paint)
+        canvas.drawCircle(newBounds.left, newBounds.centerY(), radius, paint)
+        canvas.drawCircle(newBounds.centerX(), newBounds.top, radius, paint)
+        canvas.drawCircle(newBounds.right, newBounds.centerY(), radius, paint)
+        canvas.drawCircle(newBounds.centerX(), newBounds.bottom, radius, paint)
+        canvas.drawCircle(newBounds.centerX(), newBounds.top - rotationPointOffsetPixels, radius, paint)
+    }
+
+    // ---- End draw section
+
+
+    // --- transformation section
+
+    private fun moveSelectedStrokes() {
+        newBounds.left += movingPoint.x
+        newBounds.right += movingPoint.x
+        newBounds.top += movingPoint.y
+        newBounds.bottom += movingPoint.y
+    }
+
+    fun rotateSelectedStrokes(angle:Float, startAngle:Float) {
+        var rotateAngle = kotlin.math.round(angle + mStartAngle)
+        if (rotateAngle >= 360) {
+            rotateAngle -= 360
+        } else if (rotateAngle < 0) {
+            rotateAngle += 360
+        }
+        if (rotateAngle > 356 || rotateAngle < 4) {
+            rotateAngle = 0f
+        } else if (rotateAngle > 86 && rotateAngle < 94) {
+            rotateAngle = 90f
+        } else if (rotateAngle > 176 && rotateAngle < 184) {
+            rotateAngle = 180f
+        } else if (rotateAngle > 266 && rotateAngle < 274) {
+            rotateAngle = 270f
+        }
+
+        mAngle = rotateAngle
+    }
+
+    fun resizeSelectedStrokes(length:Float, alpha:Float, controlPoint: ControlPoint) {
+        val beta = alpha - Utils.degToRadian(mAngle)
+        var deltaW = length * kotlin.math.cos(beta)
+        var deltaH = length * kotlin.math.sin(beta)
+
+        when (controlPoint) {
+            ControlPoint.CORNER_LEFT_UP -> {
+                deltaW = -deltaW
+                val centerX = newBounds.centerX() - deltaW/2 * kotlin.math.cos(Utils.degToRadian(mAngle)) - deltaH/2 * kotlin.math.sin(Utils.degToRadian(mAngle))
+                val centerY = newBounds.centerY() - deltaW/2 * kotlin.math.sin(Utils.degToRadian(mAngle)) + deltaH/2 * kotlin.math.cos(Utils.degToRadian(mAngle))
+                newBounds = Utils.rectFromCenter(centerX, centerY, newBounds.width()+deltaW, newBounds.height()-deltaH)
+            }
+            ControlPoint.MIDDLE_UP -> {
+                deltaH = -deltaH
+                val centerX = newBounds.centerX() + deltaH/2 * kotlin.math.sin(Utils.degToRadian(mAngle))
+                val centerY = newBounds.centerY() - deltaH/2 * kotlin.math.cos(Utils.degToRadian(mAngle))
+                newBounds = Utils.rectFromCenter(centerX, centerY, newBounds.width(), newBounds.height()+deltaH)
+            }
+            ControlPoint.CORNER_RIGHT_UP -> {
+                val centerX = newBounds.centerX() + deltaW/2 * kotlin.math.cos(Utils.degToRadian(mAngle)) - deltaH/2 * kotlin.math.sin(Utils.degToRadian(mAngle))
+                val centerY = newBounds.centerY() + deltaW/2 * kotlin.math.sin(Utils.degToRadian(mAngle)) + deltaH/2 * kotlin.math.cos(Utils.degToRadian(mAngle))
+                newBounds = Utils.rectFromCenter(centerX, centerY, newBounds.width()+deltaW, newBounds.height()-deltaH)
+            }
+            ControlPoint.MIDDLE_RIGHT -> {
+                val centerX = newBounds.centerX() + deltaW/2 * kotlin.math.cos(Utils.degToRadian(mAngle))
+                val centerY = newBounds.centerY() + deltaW/2 * sin(Utils.degToRadian(mAngle))
+                newBounds = Utils.rectFromCenter(centerX, centerY, newBounds.width()+deltaW, newBounds.height())
+            }
+            ControlPoint.CORNER_RIGHT_DOWN -> {
+                val centerX = newBounds.centerX() + deltaW/2 * kotlin.math.cos(Utils.degToRadian(mAngle)) - deltaH/2 * kotlin.math.sin(Utils.degToRadian(mAngle))
+                val centerY = newBounds.centerY() + deltaW/2 * kotlin.math.sin(Utils.degToRadian(mAngle)) + deltaH/2 * kotlin.math.cos(Utils.degToRadian(mAngle))
+                newBounds = Utils.rectFromCenter(centerX, centerY, newBounds.width()+deltaW, newBounds.height()+deltaH)
+            }
+            ControlPoint.MIDDLE_DOWN -> {
+                val centerX = newBounds.centerX() - deltaH/2 * kotlin.math.sin(Utils.degToRadian(mAngle))
+                val centerY = newBounds.centerY() + deltaH/2 * kotlin.math.cos(Utils.degToRadian(mAngle))
+                newBounds = Utils.rectFromCenter(centerX, centerY, newBounds.width(), newBounds.height()+deltaH)
+            }
+            ControlPoint.CORNER_LEFT_DOWN -> {
+                deltaW = -deltaW
+                val centerX = newBounds.centerX() - deltaW/2 * kotlin.math.cos(Utils.degToRadian(mAngle)) - deltaH/2 * kotlin.math.sin(Utils.degToRadian(mAngle))
+                val centerY = newBounds.centerY() - deltaW/2 * kotlin.math.sin(Utils.degToRadian(mAngle)) + deltaH/2 * kotlin.math.cos(Utils.degToRadian(mAngle))
+                newBounds = Utils.rectFromCenter(centerX, centerY, newBounds.width()+deltaW, newBounds.height()+deltaH)
+            }
+            ControlPoint.MIDDLE_LEFT -> {
+                deltaW = -deltaW
+                val centerX = newBounds.centerX() - deltaW/2 * kotlin.math.cos(Utils.degToRadian(mAngle))
+                val centerY = newBounds.centerY() - deltaW/2 * sin(Utils.degToRadian(mAngle))
+                newBounds = Utils.rectFromCenter(centerX, centerY, newBounds.width()+deltaW, newBounds.height())
+            }
+        }
+    }
+
+
+    // --- end transformation section
+
+
+    // --- utility functions
+
+    /**
+     * get the bounds of the union of all selected strokes path
+     */
+    private fun getBounds(): RectF {
         val completeBounds = RectF()
         for ((key, stroke) in strokes) {
             if (selectedList.contains(key)) {
@@ -181,289 +365,48 @@ class SelectionBox(
         return completeBounds
     }
 
-    fun updateSelectionBox() {
-        newBounds = getBounds()
-
-        left = newBounds.left
-        top = newBounds.top
-        right = newBounds.right
-        bottom = newBounds.bottom
-        middle_x = left + (right - left) / 2
-        middle_y = top + (bottom - top) / 2
-    }
-
-    fun drawSelectionBox(canvas: Canvas) {
-        val paint = Paint()
-        paint.color = view.context.resources.getColor(R.color.selection_background)
-        paint.style = Paint.Style.FILL
-        canvas.drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), paint)
-
-        val radius = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            7.5f,
-            view.context.resources.displayMetrics
-        )
-
-        // Control point fill color
-        paint.color = view.context.resources.getColor(R.color.selection_control_point)
-        canvas.drawCircle(left, bottom, radius, paint)
-        canvas.drawCircle(middle_x, bottom, radius, paint)
-        canvas.drawCircle(right, bottom, radius, paint)
-        canvas.drawCircle(right, middle_y, radius, paint)
-        canvas.drawCircle(right, top, radius, paint)
-        canvas.drawCircle(middle_x, top, radius, paint)
-        canvas.drawCircle(left, top, radius, paint)
-        canvas.drawCircle(left, middle_y, radius, paint)
-
-        // Control point border
-        paint.color = view.context.resources.getColor(R.color.selection_control_point_border)
-        paint.style = Paint.Style.STROKE
-        canvas.drawCircle(left, bottom, radius, paint)
-        canvas.drawCircle(middle_x, bottom, radius, paint)
-        canvas.drawCircle(right, bottom, radius, paint)
-        canvas.drawCircle(right, middle_y, radius, paint)
-        canvas.drawCircle(right, top, radius, paint)
-        canvas.drawCircle(middle_x, top, radius, paint)
-        canvas.drawCircle(left, top, radius, paint)
-        canvas.drawCircle(left, middle_y, radius, paint)
-    }
-
-    fun isInside(x: Float, y: Float): Boolean {
-        val rect = RectF(left, top, right, bottom)
-        return rect.contains(x, y)
-    }
-
-    fun isChanged(): Boolean {
-        return changed
-    }
-
     private fun getControlPoint(x: Float, y: Float): ControlPoint? {
-        val tolerance = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            7.5f,
-            view.context.resources.displayMetrics
-        )
-
         var controlPoint: ControlPoint? = null
-        if (x >= left - tolerance && x <= left + tolerance &&
-            y >= top - tolerance && y <= top + tolerance
-        ) {
-            controlPoint =
-                ControlPoint.CORNER_LEFT_UP
+        if (x >= newBounds.left - tolerance && x <= newBounds.left + tolerance &&
+            y >= newBounds.top - tolerance && y <= newBounds.top + tolerance) {
+            controlPoint = ControlPoint.CORNER_LEFT_UP
         }
-        if (x >= middle_x - tolerance && x <= middle_x + tolerance &&
-            y >= top - tolerance && y <= top + tolerance
-        ) {
-            controlPoint =
-                ControlPoint.MIDDLE_UP
+        if (x >= newBounds.centerX() - tolerance && x <= newBounds.centerX() + tolerance &&
+            y >= newBounds.top - tolerance && y <= newBounds.top + tolerance) {
+            controlPoint = ControlPoint.MIDDLE_UP
         }
-        if (x >= right - tolerance && x <= right + tolerance &&
-            y >= top - tolerance && y <= top + tolerance
-        ) {
-            controlPoint =
-                ControlPoint.CORNER_RIGHT_UP
+        if (x >= newBounds.right - tolerance && x <= newBounds.right + tolerance &&
+            y >= newBounds.top - tolerance && y <= newBounds.top + tolerance) {
+            controlPoint = ControlPoint.CORNER_RIGHT_UP
         }
-        if (x >= right - tolerance && x <= right + tolerance &&
-            y >= middle_y - tolerance && y <= middle_y + tolerance
-        ) {
-            controlPoint =
-                ControlPoint.MIDDLE_RIGHT
+        if (x >= newBounds.right - tolerance && x <= newBounds.right + tolerance &&
+            y >= newBounds.centerY() - tolerance && y <= newBounds.centerY() + tolerance) {
+            controlPoint = ControlPoint.MIDDLE_RIGHT
         }
-        if (x >= right - tolerance && x <= right + tolerance &&
-            y >= bottom - tolerance && y <= bottom + tolerance
-        ) {
-            controlPoint =
-                ControlPoint.CORNER_RIGHT_DOWN
+        if (x >= newBounds.right - tolerance && x <= newBounds.right + tolerance &&
+            y >= newBounds.bottom - tolerance && y <= newBounds.bottom + tolerance) {
+            controlPoint = ControlPoint.CORNER_RIGHT_DOWN
         }
-        if (x >= middle_x - tolerance && x <= middle_x + tolerance &&
-            y >= bottom - tolerance && y <= bottom + tolerance
-        ) {
-            controlPoint =
-                ControlPoint.MIDDLE_DOWN
+        if (x >= newBounds.centerX() - tolerance && x <= newBounds.centerX() + tolerance &&
+            y >= newBounds.bottom - tolerance && y <= newBounds.bottom + tolerance) {
+            controlPoint = ControlPoint.MIDDLE_DOWN
         }
-        if (x >= left - tolerance && x <= left + tolerance &&
-            y >= bottom - tolerance && y <= bottom + tolerance
-        ) {
-            controlPoint =
-                ControlPoint.CORNER_LEFT_DOWN
+        if (x >= newBounds.left - tolerance && x <= newBounds.left + tolerance &&
+            y >= newBounds.bottom - tolerance && y <= newBounds.bottom + tolerance) {
+            controlPoint = ControlPoint.CORNER_LEFT_DOWN
         }
-        if (x >= left - tolerance && x <= left + tolerance &&
-            y >= middle_y - tolerance && y <= middle_y + tolerance
-        ) {
-            controlPoint =
-                ControlPoint.MIDDLE_LEFT
+        if (x >= newBounds.left - tolerance && x <= newBounds.left + tolerance &&
+            y >= newBounds.centerY() - tolerance && y <= newBounds.centerY() + tolerance) {
+            controlPoint = ControlPoint.MIDDLE_LEFT
+        }
+        if (x >= newBounds.centerX() - tolerance && x <= newBounds.centerX() + tolerance &&
+            y >= (newBounds.top-rotationPointOffsetPixels) - tolerance && y <= (newBounds.top-rotationPointOffsetPixels) + tolerance) {
+            controlPoint = ControlPoint.ROTATION_POINT
         }
         return controlPoint
     }
 
-    fun moveSelectedStrokes() {
-        val matrix = Matrix()
-        matrix.preTranslate(movingPoint.x, movingPoint.y)
-
-        for ((id, stroke) in strokes) {
-            if (selectedList.contains(id)) {
-                val newPath = Path(strokes[id]!!.path)
-                newPath.transform(matrix)
-                stroke.path = newPath
-            }
-        }
-
-        updateSelectionBox()
-        view.invalidate()
+    private fun isInside(x: Float, y: Float):Boolean {
+        return newBounds.contains(x, y)
     }
-
-    fun scaleSelectedStrokes(intermediateBounds: RectF) {
-        val scaleX = intermediateBounds.width() / newBounds.width()
-        val scaleY = intermediateBounds.height() / newBounds.height()
-        val matrix = Matrix()
-
-        matrix.preScale(scaleX, scaleY, newBounds.left, newBounds.top)
-        matrix.preTranslate(
-            intermediateBounds.left - newBounds.left,
-            intermediateBounds.top - newBounds.top
-        )
-
-        for ((id, stroke) in strokes) {
-            if (selectedList.contains(id)) {
-                val newPath = Path(strokes[id]!!.path)
-                newPath.transform(matrix)
-                stroke.path = newPath
-            }
-        }
-
-        updateSelectionBox()
-        view.invalidate()
-    }
-
-    fun transformSelection(
-        scaleX: Float = 1f,
-        scaleY: Float = 1f,
-        scaleSize: Float = 1f,
-        translateX: Float = 0f,
-        translateY: Float = 0f,
-        angle: Float = 0f,
-        pivotX: Float = 0f,
-        pivotY: Float = 0f
-    ) {
-        if ((scaleX != 1f) ||
-            (scaleY != 1f) ||
-            (scaleSize != 1f) ||
-            (translateX != 0f) ||
-            (translateY != 0f) ||
-            (angle != 0f)) {
-            changed = true
-        }
-
-        for (id in selectedList) {
-            val stroke = strokes[id]!!
-
-            spatialModel.remove(stroke.id)
-            stroke.spline.transform(
-                scaleX,
-                scaleY,
-                scaleSize,
-                translateX,
-                translateY,
-                angle,
-                pivotX,
-                pivotY
-            )
-            spatialModel.add(stroke)
-
-            var transformInkBuilder = VectorInkBuilder()
-            transformInkBuilder.updatePipeline(stroke.createStyle().createVectorTool())
-            val (path, _) = transformInkBuilder.buildPath(stroke.spline, null, true, true)
-
-            if (path != null) {
-                stroke.path = path
-            }
-        }
-
-        view.invalidate()
-    }
-
-    // This function will transform the existing selected strokes.
-    // Note: This only modifying the existing path, not the capture ink strokes
-    private fun onTouchForTransform(event: MotionEvent) {
-        var centerX = 0f
-        var centerY = 0f
-
-        for (i in 0 until event.pointerCount) {
-            centerX += event.getX(i)
-            centerY += event.getY(i)
-        }
-
-        centerX /= event.pointerCount
-        centerY /= event.pointerCount
-
-
-        var x1 = event.getX(0)
-        var y1 = event.getY(0)
-        var x2 = event.getX(1)
-        var y2 = event.getY(1)
-
-        if (originX.isNaN() && originY.isNaN()) {
-            originX = centerX
-            originY = centerY
-
-            for ((id, stroke) in strokes) {
-                if (id in selectedList) {
-                    originalPaths[id] = Path(stroke.path)
-                }
-            }
-
-            lastX1 = x1
-            lastY1 = y1
-            lastX2 = x2
-            lastY2 = y2
-
-            return
-        }
-
-        val angle1 = atan2(y1 - y2, x1 - x2)
-        val angle2 = atan2(lastY1 - lastY2, lastX1 - lastX2)
-        val theta = angle1 - angle2
-        val angle = theta * 180 / PI.toFloat()
-
-        val d1 = sqrt((x1 - x2).pow(2) + (y1 - y2).pow(2))
-        val d2 = sqrt((lastX1 - lastX2).pow(2) + (lastY1 - lastY2).pow(2))
-
-
-        val scale = d1 / d2
-
-        originX = centerX
-        originY = centerY
-
-        pivotPointX = centerX
-        pivotPointY = centerY
-
-        lastX1 = x1
-        lastY1 = y1
-        lastX2 = x2
-        lastY2 = y2
-
-        totalTransformationAngle += angle
-        totalTransformationScale *= scale
-
-        val mx = Matrix()
-        mx.setScale(
-            totalTransformationScale,
-            totalTransformationScale,
-            originalBounds.centerX(),
-            originalBounds.centerY()
-        )
-        mx.postRotate(totalTransformationAngle, originalBounds.centerX(), originalBounds.centerY())
-
-        for ((id, stroke) in strokes) {
-            if (id in selectedList) {
-                val newPath = Path(originalPaths[id])
-                newPath.transform(mx)
-                stroke.path = newPath
-            }
-        }
-
-        updateSelectionBox()
-        view.invalidate()
-    }
-
 }

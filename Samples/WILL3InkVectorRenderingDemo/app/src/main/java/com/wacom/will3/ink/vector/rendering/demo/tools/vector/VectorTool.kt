@@ -8,7 +8,6 @@ import com.wacom.ink.Calculator
 import com.wacom.ink.PathPoint
 import com.wacom.ink.PathPointLayout
 import com.wacom.will3.ink.vector.rendering.demo.brush.BrushPalette
-import com.wacom.will3.ink.vector.rendering.demo.tools.Range
 import com.wacom.will3.ink.vector.rendering.demo.tools.Tool
 
 open class VectorTool : Tool() {

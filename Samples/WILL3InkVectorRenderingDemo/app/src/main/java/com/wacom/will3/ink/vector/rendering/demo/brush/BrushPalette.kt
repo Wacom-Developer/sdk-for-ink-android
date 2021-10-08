@@ -8,6 +8,7 @@ import com.wacom.ink.FloatArrayList
 import com.wacom.ink.rendering.BrushPrototype
 import com.wacom.ink.rendering.ShapeFactory
 import com.wacom.ink.rendering.VectorBrush
+import java.util.*
 
 /**
  * Class collecting the all brushes which are used within the application.
@@ -15,6 +16,15 @@ import com.wacom.ink.rendering.VectorBrush
 class BrushPalette {
 
     companion object {
+        fun getBrush(uri: String) : VectorBrush? {
+            when (uri) {
+                URIBuilder.getBrushURI("vector", "Basic") -> return basic()
+                URIBuilder.getBrushURI("vector", "Circle") -> return circle()
+            }
+
+            return null
+        }
+
         fun basic(): VectorBrush {
             return VectorBrush(
                 URIBuilder.getBrushURI("vector", "Basic"),

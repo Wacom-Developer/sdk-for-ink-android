@@ -15,8 +15,7 @@ import com.wacom.will3.ink.vector.rendering.demo.tools.Range
 import kotlin.math.cos
 import kotlin.math.pow
 
-class BrushTool : VectorTool {
-    constructor() : super()
+class BrushTool : VectorTool() {
 
     companion object {
         val uri = URIBuilder.getToolURI("vector", "brush")

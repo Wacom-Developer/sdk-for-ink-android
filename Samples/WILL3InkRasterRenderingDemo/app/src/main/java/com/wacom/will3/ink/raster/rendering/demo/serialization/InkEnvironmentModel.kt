@@ -10,13 +10,14 @@ import android.os.Build
 import android.util.DisplayMetrics
 import android.view.MotionEvent
 import com.wacom.ink.format.InkModel
-import com.wacom.ink.format.InkSensorType
 import com.wacom.ink.format.enums.InkInputType
 import com.wacom.ink.format.enums.InkSensorMetricType
+import com.wacom.ink.format.enums.InkSensorType
 import com.wacom.ink.format.enums.InkState
 import com.wacom.ink.format.input.*
 import com.wacom.ink.format.tree.data.SensorData
 import com.wacom.ink.format.util.ScalarUnit
+import com.wacom.ink.model.Identifier
 import com.wacom.will3.ink.raster.rendering.demo.R
 import java.util.*
 
@@ -31,15 +32,15 @@ class InkEnvironmentModel(val activity: Activity) {
 
     var inputDevice: InputDevice
 
-    var inputProviders = hashMapOf<String, InkInputProvider>()
+    var inputProviders = hashMapOf<Identifier, InkInputProvider>()
 
-    var sensorContexts = hashMapOf<String, SensorContext>()
+    var sensorContexts = hashMapOf<Identifier, SensorContext>()
 
-    var inputContexts = hashMapOf<String, InputContext>()
+    var inputContexts = hashMapOf<Identifier, InputContext>()
 
-    val inputProviderToInputContextMapping = hashMapOf<String, String>()
+    val inputProviderToInputContextMapping = hashMapOf<Identifier, Identifier>()
 
-    val channelsForInput = hashMapOf<String, List<SensorChannel>>()
+    val channelsForInput = hashMapOf<Identifier, List<SensorChannel>>()
 
     val touchChannels = listOf(InkSensorType.X, InkSensorType.Y, InkSensorType.TIMESTAMP)
     val penChannels = listOf(InkSensorType.X, InkSensorType.Y, InkSensorType.TIMESTAMP, InkSensorType.PRESSURE, InkSensorType.ALTITUDE, InkSensorType.AZIMUTH)
@@ -130,7 +131,7 @@ class InkEnvironmentModel(val activity: Activity) {
             channelList = listOf() // empty list to avoid null pointer exceptions
         }
 
-        return Pair<SensorData, List<SensorChannel>>(SensorData(UUID.randomUUID().toString(), inputContextId, InkState.PLANE), channelList)
+        return Pair<SensorData, List<SensorChannel>>(SensorData(Identifier(UUID.randomUUID().toString()), inputContextId, InkState.PLANE), channelList)
     }
 
 
@@ -202,7 +203,7 @@ class InkEnvironmentModel(val activity: Activity) {
                     ScalarUnit.MILLISECOND,
                     0.0f,
                     0.0f,
-                    precision
+                    0
                 )
                 InkSensorType.PRESSURE -> SensorChannel(
                     InkSensorType.PRESSURE,

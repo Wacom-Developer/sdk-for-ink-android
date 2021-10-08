@@ -53,6 +53,6 @@ class EraserVectorTool : VectorTool() {
             maxSpeed = 3900f
         )
         if (size == null) size = 1.0f
-        PathPoint(current.x, current.y, size = size, red = 1f, green = 1f, blue = 1f)
+        PathPoint(current.x, current.y, size = size)
     }
 }

@@ -11,8 +11,6 @@ import com.wacom.will3.ink.vector.rendering.demo.brush.BrushPalette
 import com.wacom.will3.ink.vector.rendering.demo.brush.URIBuilder
 import com.wacom.will3.ink.vector.rendering.demo.computeValueBasedOnPressure
 import com.wacom.will3.ink.vector.rendering.demo.tools.MathUtils
-import com.wacom.will3.ink.vector.rendering.demo.tools.Range
-import kotlin.math.cos
 import kotlin.math.pow
 
 class PenTool : VectorTool() {

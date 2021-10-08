@@ -19,6 +19,18 @@ import java.io.ByteArrayOutputStream
 class BrushPalette {
 
     companion object {
+        fun getBrush(context: Context, uri: String) : RasterBrush? {
+            var brush: RasterBrush? = null
+            when {
+                uri.toLowerCase().contains("pencil") -> brush = pencil(context)
+                uri.toLowerCase().contains("waterbrush") -> brush = waterbrush(context)
+                uri.toLowerCase().contains("crayon") -> brush = crayonbrush(context)
+                uri.toLowerCase().contains("eraser") -> brush = eraser(context)
+            }
+
+            return brush
+        }
+
         fun pencil(context: Context): RasterBrush {
             val opts = BitmapFactory.Options()
             opts.inSampleSize = 1

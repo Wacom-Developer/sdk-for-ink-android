@@ -30,11 +30,11 @@ class EraserWholeStrokeTool : VectorTool() {
 
     override val touchCalculator: Calculator = { previous, current, next ->
         //Use the following to compute size based on speed:
-        PathPoint(current.x, current.y, size = 3f)
+        PathPoint(current.x, current.y, size = 3f, alpha = 0f)
     }
 
     override val stylusCalculator: Calculator = { previous, current, next ->
         //Use the following to compute size based on speed:
-        PathPoint(current.x, current.y, size = 3f)
+        PathPoint(current.x, current.y, size = 3f, alpha=0f)
     }
 }

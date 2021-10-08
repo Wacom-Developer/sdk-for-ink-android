@@ -41,7 +41,7 @@
                 android:layout_width="@dimen/btn_width"
                 android:layout_height="wrap_content"
                 android:layout_marginRight="@dimen/btn_separator"
-                android:onClick="selectFolder"
+                android:onClick="selectSaveFile"
                 android:src="@drawable/btn_save"
                 android:tint="@color/select_toolbar_button_stateful" />
 
@@ -61,6 +61,24 @@
                 android:layout_marginRight="@dimen/btn_separator"
                 android:onClick="clear"
                 android:src="@drawable/btn_clear"
+                android:tint="@color/select_toolbar_button_stateful" />
+
+            <ImageView
+                android:id="@+id/btnUndo"
+                android:layout_width="@dimen/btn_width"
+                android:layout_height="wrap_content"
+                android:layout_marginRight="@dimen/btn_separator"
+                android:onClick="undo"
+                android:src="@drawable/btn_undo_selected"
+                android:tint="@color/select_toolbar_button_stateful" />
+
+            <ImageView
+                android:id="@+id/btnRedo"
+                android:layout_width="@dimen/btn_width"
+                android:layout_height="wrap_content"
+                android:layout_marginRight="@dimen/btn_separator"
+                android:onClick="redo"
+                android:src="@drawable/btn_redo_selected"
                 android:tint="@color/select_toolbar_button_stateful" />
 
             <ImageView
@@ -147,4 +165,58 @@
         android:layout_below="@id/navbar_container"
         android:background="@android:color/transparent" />
 
+    <RelativeLayout
+        android:id="@+id/background_waiting"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:orientation="horizontal">
+
+            <ProgressBar
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:id="@+id/background_waiting_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="5dp"
+                android:textColor="@android:color/black" />
+
+        </LinearLayout>
+    </RelativeLayout>
+
+    <RelativeLayout
+        android:id="@+id/delete_background_waiting"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/deleting_msg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_centerHorizontal="true"
+            android:layout_margin="30dp"
+            android:background="@drawable/rounded_corner">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="10dp"
+                android:text="@string/deleting"
+                android:textColor="@android:color/white"
+                android:textSize="10pt"
+                android:typeface="serif" />
+        </LinearLayout>
+    </RelativeLayout>
 </RelativeLayout>

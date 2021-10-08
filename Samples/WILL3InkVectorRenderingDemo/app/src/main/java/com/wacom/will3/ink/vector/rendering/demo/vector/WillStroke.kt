@@ -4,6 +4,7 @@
  */
 package com.wacom.will3.ink.vector.rendering.demo.vector
 
+import android.graphics.Color
 import android.graphics.Path
 import com.wacom.ink.Spline
 import com.wacom.ink.format.rendering.PathPointProperties
@@ -12,15 +13,19 @@ import com.wacom.ink.format.tree.data.SensorData
 import com.wacom.ink.format.tree.groups.StrokeGroupNode
 import com.wacom.ink.format.tree.nodes.StrokeNode
 import com.wacom.ink.model.IdentifiableImpl
+import com.wacom.ink.model.Identifier
 import com.wacom.ink.model.InkStroke
 import com.wacom.ink.model.StrokeAttributes
 import com.wacom.ink.rendering.VectorBrush
+import kotlinx.coroutines.launch
+import java.util.*
 
 data class WillStroke(
         override val spline: Spline,
-        override val vectorBrush: VectorBrush
+        override val vectorBrush: VectorBrush,
+        val zOrder: Int
 ) : InkStroke {
-    override var id: String = IdentifiableImpl.generateUUID()
+    override var id: Identifier = Identifier()
 
     override var strokeAttributes: StrokeAttributes = object: StrokeAttributes {
         override var size: Float = 0f
@@ -48,7 +53,7 @@ data class WillStroke(
     var path: Path = Path()
 
     var strokeNode: StrokeNode? = null
-    var originalStrokeId : String = id
+    var originalStrokeId : Identifier = id
 
     fun createStyle(): Style {
         return Style(vectorBrush.name, 1, props = PathPointProperties(
@@ -74,5 +79,15 @@ data class WillStroke(
                 groupNode.remove(strokeNode!!)
             }
         }
+    }
+
+    fun clone() : WillStroke {
+        val stroke = WillStroke(spline, vectorBrush, zOrder)
+        stroke.sensorData = sensorData
+        stroke.id = id
+        stroke.strokeAttributes = strokeAttributes
+        stroke.path = path
+
+        return stroke
     }
 }
