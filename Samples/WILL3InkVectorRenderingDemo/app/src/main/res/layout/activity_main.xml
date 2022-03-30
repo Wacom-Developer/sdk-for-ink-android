@@ -154,6 +154,14 @@
                 android:src="@drawable/btn_selector_whole_stroke"
                 android:tint="@color/select_toolbar_button_stateful" />
 
+            <ImageView
+                android:id="@+id/btn_menu"
+                android:layout_width="@dimen/btn_width"
+                android:layout_height="wrap_content"
+                android:onClick="openMenu"
+                android:src="@drawable/btn_overflow"
+                android:tint="@color/select_toolbar_button_stateful" />
+
         </LinearLayout>
 
     </HorizontalScrollView>

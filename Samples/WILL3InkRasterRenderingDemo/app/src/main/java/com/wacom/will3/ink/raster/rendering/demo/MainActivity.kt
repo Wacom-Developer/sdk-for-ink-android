@@ -46,6 +46,8 @@ class MainActivity : AppCompatActivity(), RasterView.InkingSurfaceListener {
 
     val OPEN_FILE_ACTION = 1
     val CREATE_FILE_ACTION = 2
+    val EXPORT_TO_JPEG_ACTION = 3
+    val EXPORT_TO_PNG_ACTION = 4
 
     //-- Variables For serialisation
     private lateinit var mainGroup: StrokeGroupNode // This is a list of StrokeNode.
@@ -160,6 +162,10 @@ class MainActivity : AppCompatActivity(), RasterView.InkingSurfaceListener {
                 }
             } else if (requestCode == CREATE_FILE_ACTION) {
                 save(data!!.data!!)
+            } else if (requestCode == EXPORT_TO_PNG_ACTION) {
+                saveToRaster(data!!.data!!, Bitmap.CompressFormat.PNG)
+            } else if (requestCode == EXPORT_TO_JPEG_ACTION) {
+                saveToRaster(data!!.data!!, Bitmap.CompressFormat.JPEG)
             }
         }
     }
@@ -481,4 +487,65 @@ class MainActivity : AppCompatActivity(), RasterView.InkingSurfaceListener {
         }
     }
 
+    fun openMenu(view: View) {
+        val inflater = getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+        val popupView: View = inflater.inflate(R.layout.menu_layout, null)
+
+        // create the popup window
+        val width = LinearLayout.LayoutParams.WRAP_CONTENT
+        val height = LinearLayout.LayoutParams.WRAP_CONTENT
+        val focusable = true // lets taps outside the popup also dismiss it
+        popupWindow = PopupWindow(popupView, width, height, focusable)
+
+        // show the popup window
+        // which view you pass in doesn't matter, it is only used for the window tolken
+        val screenPos = IntArray(2)
+        view.getLocationOnScreen(screenPos)
+        popupWindow?.showAtLocation(
+            view,
+            Gravity.NO_GRAVITY,
+            screenPos[0],
+            screenPos[1] + navbar_container.height
+        )
+    }
+
+    fun exportToPNG(view: View) {
+        if (popupWindow != null) {
+            popupWindow!!.dismiss()
+        }
+
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+        intent.setType("image/png")
+        intent.putExtra(Intent.EXTRA_TITLE, "ink.png");
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        startActivityForResult(intent, EXPORT_TO_PNG_ACTION)
+    }
+
+    fun exportToJPEG(view: View) {
+        if (popupWindow != null) {
+            popupWindow!!.dismiss()
+        }
+
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+        intent.setType("image/jpeg")
+        intent.putExtra(Intent.EXTRA_TITLE, "ink.jpeg");
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        startActivityForResult(intent, EXPORT_TO_JPEG_ACTION)
+    }
+
+    fun saveToRaster(uri: Uri, format: Bitmap.CompressFormat) {
+        try {
+            getContentResolver().openFileDescriptor(uri, "w").use { pfd ->
+                FileOutputStream(pfd?.fileDescriptor).use { fileOutputStream ->
+                    val bmp = rasterDrawingSurface.toBitmap(Color.WHITE)
+                    bmp?.compress(format, 100, fileOutputStream);
+                    bmp.recycle()
+                }
+            }
+            Toast.makeText(this, "Exported successfully.", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Error: ".plus(e.message), Toast.LENGTH_SHORT).show()
+        }
+    }
 }

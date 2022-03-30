@@ -34,7 +34,16 @@ This demo shows how to create and manipulate vector-ink graphics.
 #### WILL3-Ink-Raster-Renderion-Demo
 This demo shows how to create and manipulate raster-ink graphics.
 
-> The sample code includes individual README pages describing the operation.
+The sample code includes individual README pages describing the operation. The additions provided by the InkModel Export Utilities will be covered here.
+
+### Exporting Ink
+
+In the menu, select the top-right set of dots. This will prompt a drop-down menu giving a list to formats to export to.
+
+![Exporting Ink to multiple formats](media/exporting.png)
+
+The user may then export the file to a format of their choosing.
+
 
 
 ## API Reference

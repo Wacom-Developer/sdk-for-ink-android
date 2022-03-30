@@ -32,6 +32,8 @@ import com.wacom.ink.manipulation.SpatialModel
 import com.wacom.ink.model.Identifier
 import com.wacom.ink.model.StrokeAttributes
 import com.wacom.ink.rendering.VectorBrush
+import com.wacom.will3.ink.vector.rendering.demo.export.PDFExporter
+import com.wacom.will3.ink.vector.rendering.demo.export.SVGExporter
 import com.wacom.will3.ink.vector.rendering.demo.serialization.InkEnvironmentModel
 import com.wacom.will3.ink.vector.rendering.demo.tools.Tool
 import com.wacom.will3.ink.vector.rendering.demo.tools.vector.*
@@ -51,6 +53,10 @@ class MainActivity : AppCompatActivity() {
 
     val OPEN_FILE_ACTION = 1
     val CREATE_FILE_ACTION = 2
+    val EXPORT_TO_PDF_ACTION = 3
+    val EXPORT_TO_SVG_ACTION = 4
+    val EXPORT_TO_JPEG_ACTION = 5
+    val EXPORT_TO_PNG_ACTION = 6
 
     //-- Variables For serialisation
 
@@ -122,6 +128,20 @@ class MainActivity : AppCompatActivity() {
                 }
             } else if (requestCode == CREATE_FILE_ACTION) {
                 save(data!!.data!!)
+            } else if (requestCode == EXPORT_TO_PDF_ACTION) {
+                scope.launch {
+                    saveToPDF(data!!.data!!)
+                }
+            } else if (requestCode == EXPORT_TO_SVG_ACTION) {
+                val width = vectorDrawingView.width.toFloat()
+                val height = vectorDrawingView.height.toFloat()
+                scope.launch {
+                    saveToSVG(data!!.data!!, width, height)
+                }
+            } else if (requestCode == EXPORT_TO_PNG_ACTION) {
+                saveToRaster(data!!.data!!, Bitmap.CompressFormat.PNG)
+            } else if (requestCode == EXPORT_TO_JPEG_ACTION) {
+                saveToRaster(data!!.data!!, Bitmap.CompressFormat.JPEG)
             }
         }
     }
@@ -488,4 +508,162 @@ class MainActivity : AppCompatActivity() {
         delete_background_waiting.visibility = View.GONE
     }
 
+    fun openMenu(view: View) {
+        val inflater = getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+        val popupView: View = inflater.inflate(R.layout.menu_layout, null)
+
+        // create the popup window
+        val width = LinearLayout.LayoutParams.WRAP_CONTENT
+        val height = LinearLayout.LayoutParams.WRAP_CONTENT
+        val focusable = true // lets taps outside the popup also dismiss it
+        popupWindow = PopupWindow(popupView, width, height, focusable)
+
+        // show the popup window
+        // which view you pass in doesn't matter, it is only used for the window tolken
+        val screenPos = IntArray(2)
+        view.getLocationOnScreen(screenPos)
+        popupWindow?.showAtLocation(
+            view,
+            Gravity.NO_GRAVITY,
+            screenPos[0],
+            screenPos[1] + navbar_container.height
+        )
+    }
+
+    fun exportToPDF(view: View) {
+        if (popupWindow != null) {
+            popupWindow!!.dismiss()
+        }
+
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+        intent.setType("application/pdf")
+        intent.putExtra(Intent.EXTRA_TITLE, "ink.pdf");
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        startActivityForResult(intent, EXPORT_TO_PDF_ACTION)
+    }
+
+    fun exportToSVG(view: View) {
+        if (popupWindow != null) {
+            popupWindow!!.dismiss()
+        }
+
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+        intent.setType("image/svg+xml")
+        intent.putExtra(Intent.EXTRA_TITLE, "ink.svg");
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        startActivityForResult(intent, EXPORT_TO_SVG_ACTION)
+    }
+
+    fun exportToPNG(view: View) {
+        if (popupWindow != null) {
+            popupWindow!!.dismiss()
+        }
+
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+        intent.setType("image/png")
+        intent.putExtra(Intent.EXTRA_TITLE, "ink.png");
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        startActivityForResult(intent, EXPORT_TO_PNG_ACTION)
+    }
+
+    fun exportToJPEG(view: View) {
+        if (popupWindow != null) {
+            popupWindow!!.dismiss()
+        }
+
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+        intent.setType("image/jpeg")
+        intent.putExtra(Intent.EXTRA_TITLE, "ink.jpeg");
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        startActivityForResult(intent, EXPORT_TO_JPEG_ACTION)
+    }
+
+    fun saveToPDF(uri: Uri) {
+        this@MainActivity.runOnUiThread(java.lang.Runnable {
+            openBackground(getString(R.string.exporting), true)
+        })
+
+        try {
+            val sortedStrokes = (vectorDrawingView.strokes.values.toList().sortedBy { (it as WillStroke).zOrder }) as List<WillStroke>
+            val pdfExporter = PDFExporter()
+            val pdf = pdfExporter.exportToPDF(
+                sortedStrokes,
+                PDFExporter.PDF_A4_WIDTH,
+                PDFExporter.PDF_A4_HEIGHT,
+                true
+            )
+
+            getContentResolver().openFileDescriptor(uri, "w").use { pfd ->
+                FileOutputStream(pfd?.fileDescriptor).use { fileOutputStream ->
+                    fileOutputStream.write(pdf.toByteArray())
+                }
+            }
+
+            this@MainActivity.runOnUiThread(java.lang.Runnable {
+                Toast.makeText(this, "Exported successfully.", Toast.LENGTH_SHORT).show()
+                closeBackground()
+            })
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            this@MainActivity.runOnUiThread(java.lang.Runnable {
+                Toast.makeText(this, "Error exporting: ".plus(e.message), Toast.LENGTH_SHORT).show()
+                closeBackground()
+            })
+        }
+    }
+
+    fun saveToSVG(uri: Uri, width: Float, height: Float) {
+        this@MainActivity.runOnUiThread(java.lang.Runnable {
+            openBackground(getString(R.string.exporting), true)
+        })
+
+        try {
+            getContentResolver().openFileDescriptor(uri, "w").use { pfd ->
+                FileOutputStream(pfd?.fileDescriptor).use { fileOutputStream ->
+                    val sortedStrokes = (vectorDrawingView.strokes.values.toList().sortedBy { (it as WillStroke).zOrder }) as List<WillStroke>
+                    val svgExporter = SVGExporter()
+                    svgExporter.exportToSVG(fileOutputStream, sortedStrokes, width, height, true)
+                }
+            }
+
+            this@MainActivity.runOnUiThread(java.lang.Runnable {
+                Toast.makeText(this, "Exported successfully.", Toast.LENGTH_SHORT).show()
+                closeBackground()
+            })
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            this@MainActivity.runOnUiThread(java.lang.Runnable {
+                Toast.makeText(this, "Error exporting: ".plus(e.message), Toast.LENGTH_SHORT).show()
+                closeBackground()
+            })
+        }
+    }
+
+    fun saveToRaster(uri: Uri, format: Bitmap.CompressFormat) {
+        try {
+            getContentResolver().openFileDescriptor(uri, "w").use { pfd ->
+                FileOutputStream(pfd?.fileDescriptor).use { fileOutputStream ->
+                    val bmp = loadBitmapFromView(vectorDrawingView)
+                    bmp?.compress(format, 100, fileOutputStream);
+                }
+            }
+            Toast.makeText(this, "Exported successfully.", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Error: ".plus(e.message), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun loadBitmapFromView(v: View): Bitmap? {
+        val b = Bitmap.createBitmap(
+            v.width,
+            v.height,
+            Bitmap.Config.ARGB_8888
+        )
+        val c = Canvas(b)
+        v.draw(c)
+        return b
+    }
 }

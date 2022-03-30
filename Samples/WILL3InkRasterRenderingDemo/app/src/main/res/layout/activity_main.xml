@@ -107,6 +107,14 @@
                 android:tooltipText="@string/raster_eraser"
                 android:layout_marginEnd="@dimen/btn_separator"/>
 
+            <ImageView
+                android:id="@+id/btn_menu"
+                android:layout_width="@dimen/btn_width"
+                android:layout_height="wrap_content"
+                android:onClick="openMenu"
+                android:src="@drawable/btn_overflow"
+                android:tint="@color/select_toolbar_button_stateful" />
+
         </LinearLayout>
 
     </HorizontalScrollView>
