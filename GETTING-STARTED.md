@@ -22,7 +22,7 @@ The downloaded Zip file contains the SDK with documentation.
 
 ## SDK license
 
-The SDK is free of charge and does not need a license.
+The SDK does not require a license key. Use of the SDK is subject to the End User License Agreement. 
 
 ## Sample code
 
