@@ -13,9 +13,9 @@ The WILL SDK for Ink requires the following:
 Download the SDK from https://developer.wacom.com/developer-dashboard
 
 * Login using your Wacom ID
-* Select **Downloads for ink**
-* Download **WILL SDK for ink for Android (version 3.0)**
-* Accept the End User License Agreement to use the SDK
+* Navigate to **Downloads for ink**
+* Select **More info** on **WILL SDK for ink for Android**
+* Accept the End User License Agreement and select **Download** to use the SDK
 
 The downloaded Zip file contains the SDK with documentation.
 
